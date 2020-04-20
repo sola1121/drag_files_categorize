@@ -6,10 +6,18 @@ from PyQt5.QtWidgets import QApplication
 
 from drop_files_categortize import RunMainWin
 
+class Main():
+    def __init__(self, argv):
+        self.app = QApplication(argv)
+        self.win = RunMainWin()
+    
+    def run(self):
+        self.win.show()
+        sys.exit(self.app.exec())
+
 
 if __name__ == "__main__":
-
-    app = QApplication(sys.argv)
-    win = RunMainWin()
-    win.show()
-    sys.exit(app.exec())
+    
+    main = Main(sys.argv)
+    main.run()
+    
