@@ -1,4 +1,4 @@
-import os, shutil, filecmp, json, itertools
+import os, shutil, filecmp, json, itertools, asyncio
 from collections import OrderedDict
 
 from PyQt5.QtCore import Qt
@@ -46,7 +46,7 @@ class LabelAcceptDrop(QLabel):
                    used_rate = round(disk_info.used/disk_info.total*100, 2))
             statusbar.showMessage(disk_info_format)
         except Exception as ex:
-            QMessageBox.warning(self.nativeParentWidget(), "获取磁盘使用失败", f"{ex}")
+            QMessageBox.critical(self.nativeParentWidget(), "获取磁盘使用失败", f"{ex}")
 
     def mouseDoubleClickEvent(self, event):
         """重载双击事件, 显示磁盘容量"""
@@ -54,32 +54,51 @@ class LabelAcceptDrop(QLabel):
     
     def dragEnterEvent(self, event):
         """重载进入事件"""
-        print("+++++++++++ 进入事件")
         if event.mimeData().hasUrls():
-            # event.acceptProposedAction()
             event.accept()
             self.setStyleSheet(LABEL_ENTER_STYLESHEET)
         else:
             event.ignore()
-            # super(self).dragEnterEvent(event)
 
     def dragLeaveEvent(self, event):
         """重载离开事件"""
-        print('----------- 出去事件')
         self.setStyleSheet(LABEL_LEAVE_STYLESHEET)
 
     # TODO: 主要功能开发, 使用shutil, filecmp, os开始对文件进行操作
     def dropEvent(self, event):
-        """重载拖入释放事件"""
+        """重载拖入释放事件, 主要功能事件"""
+        coro_list = list()
+        async_event_loop = asyncio.get_event_loop()
+        main_win = self.nativeParentWidget()
         if event.mimeData().hasUrls():
-            print(self.the_id)
             # 遍历输出拖动进来的所有文件路径
             for url in event.mimeData().urls():
-                path = url.toLocalFile()
-                print(path)
-            text = event.mimeData().text()
-            print(text)
-            event.acceptProposedAction()
+                src_path = url.toLocalFile()
+                print("\n拖入目录:", src_path)
+                if src_path == self.text():   # 拖入目录是自身的情况忽略
+                    continue
+                if not os.path.exists(self.text()):
+                    try:
+                        os.makedirs(self.text())
+                    except Exception as ex:
+                        QMessageBox.critical(main_win, "拖入目录出错", "未发现定位目录, 尝试创建也出错.")
+                # 主要功能, 进行文件的处理
+                mode_sign_data = main_win.mode_switch_action.data()
+                if mode_sign_data == CUT_SIGN:   # 剪切文件
+                    print(src_path, "-M->", self.text())
+                elif  mode_sign_data == COPY_SIGN:   # 复制文件
+                    print(src_path, "-C->", self.text())
+                elif mode_sign_data == COMPARE_SIGN:   # 对比文件
+                    new_coro = compare_mode_func(main_win, src_path, self.text())
+                    coro_list.append(new_coro)
+                else:
+                    print("++++当前模式++++", mode_sign_data)
+                    QMessageBox.critical(main_win, "模式错误", f"未检测到合法模式设置. {mode_sign_data}")
+            if coro_list:
+                future_result = async_event_loop.run_until_complete(asyncio.gather(*(coro_list)))
+                print("Future对象:", future_result)
+                if mode_sign_data == COMPARE_SIGN:   # 展示对比信息
+                    show_compare_message(main_win, self.text(), future_result)
         else:
             event.ignore()
         self.setStyleSheet(LABEL_INIT_STYLESHEET)
@@ -93,10 +112,9 @@ class RunMainWin(MainWindow):
         self.drop_groups = OrderedDict()   # 用于拖拽的对象储存
         self.button_font = QFont()         # 用于button的QFont
         self.button_font.setPointSize(BUTTON_FONT_SIZE)   # 设置按钮的字体大小
-        self.move_or_cut_mode = self.move_copy_switch_action.data()   # 文件的处理模式, 剪切或复制
 
         self.area_add_action.triggered.connect(lambda : self.add_drop_area(adjust_size=True))
-        self.move_copy_switch_action.triggered.connect(lambda : self.switch_mode(self.move_copy_switch_action.data()))
+        self.mode_switch_action.triggered.connect(lambda : self.switch_mode(self.mode_switch_action.data()))
         self.config_input_aciton.triggered.connect(self.reload_json_config)
         self.config_output_aciton.triggered.connect(self.down_json_config)
 
@@ -110,7 +128,7 @@ class RunMainWin(MainWindow):
         # 判断窗口大小
         is_out_desktop = within_range_desktop(self.height()+DROP_AREA_HEIGHT, DROP_AREA_HEIGHT)
         if is_out_desktop >= 0:
-            back_info = QMessageBox.information(self, "窗口过大提醒", "继续增加拖拽区域将超出桌面范围, 是否继续.", 
+            back_info = QMessageBox.warning(self, "窗口过大提醒", "继续增加拖拽区域将超出桌面范围, 是否继续.", 
                                                 buttons=QMessageBox.Yes | QMessageBox.No)
             if back_info == QMessageBox.No:
                 return None
@@ -157,17 +175,17 @@ class RunMainWin(MainWindow):
         index = SIGNS_LIST.index(sign)
         new_sign = signs_cycle[index+1]
         if new_sign == CUT_SIGN:
-            self.move_copy_switch_action.setData(CUT_SIGN)
-            self.move_copy_switch_action.setIcon(QIcon(CUT_ICON))
-            self.move_copy_switch_action.setText(self.move_action_text)
+            self.mode_switch_action.setData(CUT_SIGN)
+            self.mode_switch_action.setIcon(QIcon(CUT_ICON))
+            self.mode_switch_action.setText(self.move_action_text)
         elif new_sign == COPY_SIGN:
-            self.move_copy_switch_action.setData(COPY_SIGN)
-            self.move_copy_switch_action.setIcon(QIcon(COPY_ICON))
-            self.move_copy_switch_action.setText(self.copy_action_text)
+            self.mode_switch_action.setData(COPY_SIGN)
+            self.mode_switch_action.setIcon(QIcon(COPY_ICON))
+            self.mode_switch_action.setText(self.copy_action_text)
         else:
-            self.move_copy_switch_action.setData(COMPARE_SIGN)
-            self.move_copy_switch_action.setIcon(QIcon(COMPARE_ICON))
-            self.move_copy_switch_action.setText(self.compare_action_text)
+            self.mode_switch_action.setData(COMPARE_SIGN)
+            self.mode_switch_action.setIcon(QIcon(COMPARE_ICON))
+            self.mode_switch_action.setText(self.compare_action_text)
 
     def find_drop_directory(self, item_label):
         """定义拖拽区域的定位目录
@@ -198,8 +216,8 @@ class RunMainWin(MainWindow):
             for label in [group_list[0] for group_list in self.drop_groups.values()]:
                 self.remove_drop_area(label)
             self.load_json_config(directory, disable_auto_load=True, adjust_size=False)
-            # 无法使用add_drop_area的动态调整高度, 重新载入窗口没有推荐的大小数据. 拖拽清空后主窗口高 + 拖拽区域总高度 + 工具栏高
-            self.resize(-1, self.height()+len(self.drop_groups)*DROP_AREA_HEIGHT+self.toolbar.height())
+            # 无法使用add_drop_area的动态调整高度, 重新载入窗口没有推荐的大小数据. 拖拽清空后主窗口高 + 拖拽区域总高度 + 状态栏高
+            self.resize(-1, self.height()+len(self.drop_groups)*DROP_AREA_HEIGHT+self.statusbar.height())
 
     def load_json_config(self, directory, disable_auto_load=False, adjust_size=False):
         """进行载入json配置文件, 
@@ -224,7 +242,7 @@ class RunMainWin(MainWindow):
                                           "\n".join(marked_paths_dit["not_exist"])
                             QMessageBox.information(self, "目录解析提醒", info_format)           
             except Exception as ex:
-                QMessageBox.warning(self, "Json 载入错误", f"不能解析所给定的json文件: {directory}\n{ex}")
+                QMessageBox.critical(self, "Json 载入错误", f"不能解析所给定的json文件: {directory}\n{ex}")
 
     def down_json_config(self):
         """导出json配置文件"""
@@ -274,3 +292,51 @@ def mark_paths(paths_list: list) -> dict:
 
 ### 主控功能 ###
 ### REVIEW 文件操作的主功能
+
+async def move_mode_func(widget):
+    """移动文件或目录"""
+    pass
+
+
+async def copy_mode_func(widget):
+    """复制文件或目录"""
+    pass
+
+
+async def compare_mode_func(widget, origin_path, direct_path):
+    """单次对比目录或文件是否存在
+        widget: 主窗口控件
+        origin_path: 原目录或原文件目录
+        direct_path: 定位目录
+        返回{ 原路径: [[相同目录], [相同文件]] }
+    """
+    if os.path.isfile(origin_path):
+        return {origin_path: [[], [os.path.split(origin_path)[1]] if os.path.exists(origin_path) else []]}
+    elif os.path.isdir(origin_path):
+        directory_compare = filecmp.dircmp(origin_path, direct_path)
+        common_dirs = directory_compare.common_dirs
+        common_files = directory_compare.common_files
+        return {origin_path: [common_dirs, common_files]}
+
+
+def show_compare_message(widget, direct_path, infos_list):
+    """显示目录对比信息
+        widget: 主窗口控件
+        direct_path: 定位目录
+        infos_list: 如
+            [
+                {'/home/c1': [ ['deep2'], ['file1.png'] ]}, 
+                {'/home/backup': [ ['deep2'], ['file1.png'] ]},
+                {'/home/file1.png': [ [], [''] ]}
+            ]
+    """
+    infos_format = str()
+    info_format = "\n[×]Compare {origin} && {direct}\n -Common dirs:\n    {directories}\n -Common files:\n    {files}\n"
+    for info_dit in infos_list:
+        infos_format += info_format.format(
+            origin=list(info_dit.keys())[0], 
+            direct=direct_path, 
+            directories=", ".join(list(info_dit.values())[0][0]), 
+            files=", ".join(list(info_dit.values())[0][1])
+        )
+    QMessageBox.information(widget, "比较信息", infos_format)

@@ -4,6 +4,13 @@ from exceptions import *
 from ui_config import *
 
 
+class MyInfoLabel(QtWidgets.QLabel):
+    """项目信息标签"""
+    def __init__(self, str, parent=None):
+        super().__init__(str, parent)
+        self.setOpenExternalLinks(True)
+        # self.
+
 class MainWindow(QtWidgets.QMainWindow):
     """主窗口样式"""
     def __init__(self, parent=None, flags=QtCore.Qt.WindowFlags()):
@@ -48,7 +55,7 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.area_add_action.setShortcut("Ctrl+Shift+A")
         # 切换复制或剪切模式的动作
-        self.move_copy_switch_action = QtWidgets.QAction(parent=self)
+        self.mode_switch_action = QtWidgets.QAction(parent=self)
         if DEFAULT_SIGN == CUT_SIGN:
             icon_file = CUT_ICON 
             move_copy_text = self.move_action_text
@@ -60,10 +67,10 @@ class MainWindow(QtWidgets.QMainWindow):
             move_copy_text = self.compare_action_text
         else:
             raise UiConfigError("ui windows config mode switch action error, give DEFAULT_SIGN %s"%DEFAULT_SIGN)
-        self.move_copy_switch_action.setData(DEFAULT_SIGN)
-        self.move_copy_switch_action.setIcon(QtGui.QIcon(icon_file))
-        self.move_copy_switch_action.setText(move_copy_text)
-        self.move_copy_switch_action.setShortcut("Ctrl+Shift+M")
+        self.mode_switch_action.setData(DEFAULT_SIGN)
+        self.mode_switch_action.setIcon(QtGui.QIcon(icon_file))
+        self.mode_switch_action.setText(move_copy_text)
+        self.mode_switch_action.setShortcut("Ctrl+Shift+M")
         # 导入json配置的动作
         self.config_input_aciton = QtWidgets.QAction(
             QtGui.QIcon(SETTING_INPUT),
@@ -85,7 +92,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.toolbar = self.addToolBar("add area")
         self.toolbar.addAction(self.area_add_action)
         self.toolbar.addSeparator()
-        self.toolbar.addAction(self.move_copy_switch_action)
+        self.toolbar.addAction(self.mode_switch_action)
         self.toolbar.addSeparator()
         self.toolbar.addWidget(self.linedit_config_path)
         self.toolbar.addAction(self.config_input_aciton)
@@ -96,7 +103,8 @@ class MainWindow(QtWidgets.QMainWindow):
         label = QtWidgets.QLabel()
         label.setOpenExternalLinks(True)
         label.setText("<a style='font-size: 11px;' href='https://github.com/sola1121/drag_files_categorize'>Github</a>")
+        label.setFrameStyle(QtCore.Qt.PlainText)
         self.statusbar = QtWidgets.QStatusBar(self)
         self.statusbar.setStyleSheet(STATUSBAR_STYLESHEET)
         self.setStatusBar(self.statusbar)
-        self.statusbar.addPermanentWidget(label)
+        self.statusbar.addPermanentWidget(label, 0)

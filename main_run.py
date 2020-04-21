@@ -4,7 +4,7 @@ import sys
 
 from PyQt5.QtWidgets import QApplication
 
-from drop_files_categortize import RunMainWin
+from categortize_core import RunMainWin
 
 class Main():
     def __init__(self, argv):

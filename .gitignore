@@ -142,3 +142,7 @@ tempCodeRunnerFile*
 
 # vscode
 .vscode
+
+# test
+test/*
+test/function_pre_develop.py
