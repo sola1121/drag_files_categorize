@@ -1,4 +1,4 @@
-import os, shutil, filecmp, json, itertools, asyncio
+import os, shutil, filecmp, json, itertools, asyncio, time
 from collections import OrderedDict
 
 from PyQt5.QtCore import Qt
@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import QHBoxLayout, QLabel, QPushButton, QFileDialog, QMess
 
 from exceptions import *
 from ui_config import *
-from ui_window import MainWindow
+from ui_window import FileHandleDialog, MainWindow
 
 
 ### 控件类, 窗口类 ###
@@ -37,7 +37,7 @@ class LabelAcceptDrop(QLabel):
                 return None
             if not os.path.exists(self.text()):
                 return None
-            disk_info = shutil.disk_usage(path=self.text())   # 单位KB
+            disk_info = shutil.disk_usage(path=self.text())   # 单位B
             disk_info_format = "根 {root} , 总容量: {total}GB 使用: {used}GB 空闲: {free}GB 使用率: {used_rate}%".format(
                    root = (os.path.splitdrive(self.text())[0]) if (os.path.splitdrive(self.text())[0]) else "/",
                    total = round(disk_info.total/1024**3, 2), 
@@ -84,15 +84,16 @@ class LabelAcceptDrop(QLabel):
                         QMessageBox.critical(main_win, "拖入目录出错", "未发现定位目录, 尝试创建也出错.")
                 # 主要功能, 进行文件的处理
                 mode_sign_data = main_win.mode_switch_action.data()
+                # TODO: 
                 if mode_sign_data == CUT_SIGN:   # 剪切文件
-                    print(src_path, "-M->", self.text())
+                    reback = move_copy_prepare(main_win, src_path, self.text())
+                    print(src_path, "-返回值%s-M->"%reback, self.text())
                 elif  mode_sign_data == COPY_SIGN:   # 复制文件
                     print(src_path, "-C->", self.text())
                 elif mode_sign_data == COMPARE_SIGN:   # 对比文件
                     new_coro = compare_mode_func(main_win, src_path, self.text())
                     coro_list.append(new_coro)
                 else:
-                    print("++++当前模式++++", mode_sign_data)
                     QMessageBox.critical(main_win, "模式错误", f"未检测到合法模式设置. {mode_sign_data}")
             if coro_list:
                 future_result = async_event_loop.run_until_complete(asyncio.gather(*(coro_list)))
@@ -110,8 +111,6 @@ class RunMainWin(MainWindow):
         super().__init__(parent=parent)
         self.the_id = 0                    # 自增键
         self.drop_groups = OrderedDict()   # 用于拖拽的对象储存
-        self.button_font = QFont()         # 用于button的QFont
-        self.button_font.setPointSize(BUTTON_FONT_SIZE)   # 设置按钮的字体大小
 
         self.area_add_action.triggered.connect(lambda : self.add_drop_area(adjust_size=True))
         self.mode_switch_action.triggered.connect(lambda : self.switch_mode(self.mode_switch_action.data()))
@@ -178,20 +177,26 @@ class RunMainWin(MainWindow):
             self.mode_switch_action.setData(CUT_SIGN)
             self.mode_switch_action.setIcon(QIcon(CUT_ICON))
             self.mode_switch_action.setText(self.move_action_text)
+            self.setWindowTitle(MAIN_WIN_TITLE + "   [mode: move]")
         elif new_sign == COPY_SIGN:
             self.mode_switch_action.setData(COPY_SIGN)
             self.mode_switch_action.setIcon(QIcon(COPY_ICON))
             self.mode_switch_action.setText(self.copy_action_text)
-        else:
+            self.setWindowTitle(MAIN_WIN_TITLE + "   [mode: copy]")
+        elif new_sign == COMPARE_SIGN:
             self.mode_switch_action.setData(COMPARE_SIGN)
             self.mode_switch_action.setIcon(QIcon(COMPARE_ICON))
             self.mode_switch_action.setText(self.compare_action_text)
+            self.setWindowTitle(MAIN_WIN_TITLE + "   [mode: compare]")
+        else:
+            QMessageBox.critical(self, "模式配置错误", "模式切换获得非法模式配置.")
+            return 1
 
     def find_drop_directory(self, item_label):
         """定义拖拽区域的定位目录
             item_label: 接受拖拽的Label控件
         """
-        directory = QFileDialog.getExistingDirectory(parent=self, caption="指定目录")
+        directory = QFileDialog.getExistingDirectory(parent=self, caption="指定目录", directory=os.path.dirname(__file__))
         if directory:
             item_label.setText(directory)
             item_label.setToolTip(directory)
@@ -209,6 +214,7 @@ class RunMainWin(MainWindow):
         """通过文件寻找载入json配置文件"""
         directory, file_type = QFileDialog.getOpenFileName(parent=self, 
             caption="载入Json配置", 
+            directory=os.path.dirname(__file__),
             filter="json config file(*.json)"
         )
         if directory and file_type:
@@ -290,17 +296,74 @@ def mark_paths(paths_list: list) -> dict:
     return marked_paths_dit
 
 
+def get_format_file_size(path: str) -> str:
+    """返回文件大小, 含单位
+        path : 文件路径
+    """
+    if not os.path.exists(path):
+        return "error"
+    size = os.path.getsize(path)   # 单位B(字节)
+    units = ["KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"]   # 以1000为间隔单位
+    for i in range(0, len(units)):
+        decision_num = size / 1000**i
+        if (i == 0) and decision_num<1:
+            return str(round(size, 2)) + "B"
+        if decision_num<1:
+            return str(round(size/1000**(i-1), 2)) + units[i-1]
+    else:
+        return str(round(size/1000**i, 2)) + units[i]
+
+
 ### 主控功能 ###
 ### REVIEW 文件操作的主功能
 
-async def move_mode_func(widget):
-    """移动文件或目录"""
-    pass
+IGNORE_SIGN = 100
+ACCEPT_SIGN = 200
 
 
-async def copy_mode_func(widget):
-    """复制文件或目录"""
-    pass
+def move_copy_prepare(widget, src_path, dst_path):
+    """预先准备, 主要要询问对重名文件的处理方式"""
+    if os.path.samefile(src_path, dst_path):
+        return IGNORE_SIGN
+    name_path = os.path.split(src_path)[1]   # 被移动或复制的目录或文件名
+    new_dst_path = os.path.join(dst_path, name_path)   # 移动或复制新的路径
+    if os.path.exists(new_dst_path):   #　判断是否已经在目标路径存在
+        # 判断移动的是啥
+        if os.path.isfile(src_path):
+            type_describle = "文件"
+        elif os.path.isdir(src_path): 
+            type_describle = "文件夹"
+        else:
+            type_describle = "未知"
+        # 初始化文件冲突对话框, 并进行必要的设置
+        head_info_format = "<h3>合并{type_describle}\"{name_path}\"吗?</h3><br>\
+                             <h4>在\"{dst_name_path}\"存在同名内容时, 将会被<span stle='color: red;'>覆盖</span>!</h4>".format(
+                                 type_describle = type_describle,
+                                 name_path = name_path,
+                                 dst_name_path = os.path.split(dst_path)[1]
+                            )
+        dst_info_format = "<b>原{type_describle}</b><br>大小: {size}<br>上次修改: {datetime}".format(
+                            type_describle = type_describle,
+                            size = get_format_file_size(new_dst_path),
+                            datetime = time.strftime("%Y.%m.%d %H:%M:%S", time.localtime(os.path.getmtime(new_dst_path)))
+        )
+        src_info_format = "<b>替换为</b><br>大小: {size}<br>上次修改: {datetime}".format(
+                           size = get_format_file_size(src_path),
+                           datetime = time.strftime("%Y.%m.%d %H:%M:%S", time.localtime(os.path.getmtime(src_path)))
+        )
+        file_handle_dialog = FileHandleDialog(parent=widget)
+        label_header = QLabel(head_info_format, parent=file_handle_dialog)
+        label_header.setTextInteractionFlags(Qt.TextSelectableByMouse|Qt.TextSelectableByKeyboard)
+        label_dst_info = QLabel(dst_info_format, parent=file_handle_dialog)
+        label_src_info = QLabel(src_info_format, parent=file_handle_dialog)
+        file_handle_dialog.grid_layout.addWidget(label_header, 0, 1)
+        file_handle_dialog.grid_layout.addWidget(label_dst_info, 1, 1)
+        file_handle_dialog.grid_layout.addWidget(label_src_info, 2, 1)
+        file_handle_dialog.set_name_path(name_path)
+        sign_back = file_handle_dialog.exec()
+        print("按键返回值:", sign_back)
+    else:
+        return ACCEPT_SIGN
 
 
 async def compare_mode_func(widget, origin_path, direct_path):
@@ -310,13 +373,17 @@ async def compare_mode_func(widget, origin_path, direct_path):
         direct_path: 定位目录
         返回{ 原路径: [[相同目录], [相同文件]] }
     """
+    direct_origin = os.path.join(direct_path, os.path.split(origin_path)[1])   # 在目标目录中的
     if os.path.isfile(origin_path):
-        return {origin_path: [[], [os.path.split(origin_path)[1]] if os.path.exists(origin_path) else []]}
+        return {origin_path: [[], [os.path.split(origin_path)[1]] if os.path.exists(direct_origin) else []]}
     elif os.path.isdir(origin_path):
-        directory_compare = filecmp.dircmp(origin_path, direct_path)
-        common_dirs = directory_compare.common_dirs
-        common_files = directory_compare.common_files
-        return {origin_path: [common_dirs, common_files]}
+        if os.path.exists(direct_origin):   # 在目标目录中是否存在
+            directory_compare = filecmp.dircmp(origin_path, direct_origin)
+            common_dirs = directory_compare.common_dirs
+            common_files = directory_compare.common_files
+            return {origin_path: [common_dirs, common_files]}
+        else:
+            return {origin_path: [[], []]}
 
 
 def show_compare_message(widget, direct_path, infos_list):
@@ -333,9 +400,10 @@ def show_compare_message(widget, direct_path, infos_list):
     infos_format = str()
     info_format = "\n[×]Compare {origin} && {direct}\n -Common dirs:\n    {directories}\n -Common files:\n    {files}\n"
     for info_dit in infos_list:
+        origin_path = list(info_dit.keys())[0]
         infos_format += info_format.format(
-            origin=list(info_dit.keys())[0], 
-            direct=direct_path, 
+            origin=origin_path, 
+            direct=os.path.join(direct_path, os.path.split(origin_path)[1]), 
             directories=", ".join(list(info_dit.values())[0][0]), 
             files=", ".join(list(info_dit.values())[0][1])
         )

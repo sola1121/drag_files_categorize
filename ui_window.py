@@ -1,15 +1,145 @@
+import sys
+
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from exceptions import *
 from ui_config import *
 
 
+class DownLabel(QtWidgets.QLabel):
+    """具有点击事件的标签"""
+    def __init__(self, parent=None, flags=QtCore.Qt.WindowFlags()):
+        super().__init__(parent=parent, flags=flags)
+        self.up_clicked_text = "▶ 为目标选择一个新名称"
+        self.down_clicked_text = "▼ 为目标选择一个新名称"
+        self.is_clicked = False
+
+        self.setText(self.up_clicked_text)
+    
+    def mousePressEvent(self, event):
+        """重载单击事件, 配合FileHandleDialog使用"""
+        handle_dialog = self.nativeParentWidget()
+        parent_layout = handle_dialog.vbox_layout
+        if self.is_clicked:   # 未点击时, 隐藏lineedit
+            self.is_clicked = False
+            self.setText(self.up_clicked_text)
+            handle_dialog.linedit_rename.setVisible(False)
+            handle_dialog.resize(handle_dialog.width(), parent_layout.sizeHint().height())   #NOTE: 工作的不是很好
+            # parent_layout.removeWidget(handle_dialog.linedit_rename)
+        else:   # 点击时, 显示lineedit
+            self.is_clicked = True
+            self.setText(self.down_clicked_text)
+            handle_dialog.linedit_rename.setVisible(True)
+            # index = parent_layout.indexOf(self) + 1
+            # parent_layout.insertWidget(index, handle_dialog.linedit_rename)
+            
+
+class FileHandleDialog(QtWidgets.QDialog):
+    """文件冲突处理框
+    内置接口
+        name_path : 原始的目录或文件名
+        linedit_rename : 重命名单行编辑框
+        grid_layout : 信息的主显示
+        button_cover : 覆盖或重命名按钮
+        button_ignore : 跳过按钮
+        button_cancel : 取消按钮
+    """
+    def __init__(self, parent=None, flags=QtCore.Qt.WindowFlags()):
+        super().__init__(parent=parent, flags=flags)
+        self.setWindowTitle("文件冲突")
+
+        self.create_buttons()
+        self.create_label()
+        self.create_linedit()
+        self.set_layout()
+
+        self.name_path = None   # 原始的文件名
+
+    def create_buttons(self):
+        """创建按钮"""
+        self.button_cover  = QtWidgets.QPushButton("覆盖", parent=self)
+        self.button_cover.setToolTip("Cover")
+        self.button_ignore = QtWidgets.QPushButton("跳过(&S)", parent=self)
+        self.button_cancel = QtWidgets.QPushButton("取消", parent=self)
+        self.button_cancel.setToolTip("Cancel")
+        self.button_cancel.setDefault(True)
+        self.button_cancel.clicked.connect(self.to_close)
+
+    def create_label(self):
+        """操作重命名标签"""
+        self.label_down = DownLabel(parent=self)
+
+    def create_linedit(self):
+        if sys.platform == "win32":
+            name_regx = QtCore.QRegExp(r"^[^\/\?\*:\|\\<>]+$")    # 不能有 / ?  * : | \  <  >
+            self.name_black_list = ["con","aux","nul","prn","com0","com1","com2","com3","com4",
+                                    "com5","com6","com7", "com8","com9","lpt0","lpt1","lpt2",
+                                    "lpt3", "lpt4","lpt5","lpt6","lpt7","lpt8","lpt9"]
+        else:
+            name_regx = QtCore.QRegExp(r"^[^\.\/][^\/]+$")  # 开头不能 . /  里面不能有 /
+            self.name_black_list = []
+        self.linedit_rename = QtWidgets.QLineEdit()
+        # 正则验证, 字母和数字
+        validator_regex = QtGui.QRegExpValidator()
+        validator_regex.setRegExp(name_regx)
+        self.linedit_rename.setValidator(validator_regex)
+        self.linedit_rename.setMaxLength(255)
+        self.linedit_rename.textChanged.connect(self.linedit_rename_changed)
+
+    def set_layout(self):
+        """进行窗口布局"""
+        hbox_layout = QtWidgets.QHBoxLayout()
+        hbox_layout.addSpacing(QtGui.QPixmap(DIALOG_QUESTION_ICON).width())
+        hbox_layout.addWidget(self.button_cancel)
+        hbox_layout.addWidget(self.button_ignore)
+        hbox_layout.addWidget(self.button_cover)
+
+        label_question_pixmap = QtWidgets.QLabel(parent=self)
+        label_question_pixmap.setPixmap(QtGui.QPixmap(DIALOG_QUESTION_ICON))
+
+        self.grid_layout = QtWidgets.QGridLayout()
+        self.grid_layout.addWidget(label_question_pixmap, 0, 0)
+        self.grid_layout.setSpacing(10)
+
+        self.vbox_layout = QtWidgets.QVBoxLayout()
+        self.vbox_layout.addLayout(self.grid_layout)
+        self.vbox_layout.addWidget(self.label_down)
+        self.vbox_layout.addWidget(self.linedit_rename)
+        self.linedit_rename.setVisible(False)
+        self.vbox_layout.addLayout(hbox_layout)
+
+        self.setLayout(self.vbox_layout)
+
+    def set_name_path(self, value):
+        """设置重命名单行编辑框文本"""
+        self.name_path = value
+        self.linedit_rename.setText(value)
+
+    def linedit_rename_changed(self, value):
+        """重命名编辑框文本改变事件"""
+        if len(value) == 0:
+            self.button_cover.setEnabled(False)
+        else:
+            self.button_cover.setEnabled(True)
+        if value == self.name_path:
+            self.button_cover.setText("覆盖")
+            self.button_cover.setToolTip("Cover")
+        else:
+            self.button_cover.setText("重命名")
+            self.button_cover.setToolTip("Rename")
+
+    def to_close(self):
+        return self.close()
+
+
 class MyInfoLabel(QtWidgets.QLabel):
-    """项目信息标签"""
-    def __init__(self, str, parent=None):
-        super().__init__(str, parent)
+    """相关信息标签"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
         self.setOpenExternalLinks(True)
-        # self.
+        self.setText("<span style='font-size: 10px;'><a href='https://github.com/sola1121/drag_files_categorize'>Github</a> GPL v3<span>")
+        self.setToolTip("开发者: sola1121, 该项目主页: https://github.com/sola1121/drag_files_categorize")
+
 
 class MainWindow(QtWidgets.QMainWindow):
     """主窗口样式"""
@@ -24,9 +154,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setWindowIcon(QtGui.QIcon(MAIN_ICON))
         self.setWindowTitle(MAIN_WIN_TITLE)
 
-        self.move_action_text = "当前模式: 剪切 (Ctrl+Shift+M)"
-        self.copy_action_text = "当前模式: 复制 (Ctrl+Shift+M)"
-        self.compare_action_text = "当前模式: 比较 (Ctrl+Shift+M)"
+        self.button_font = QtGui.QFont()         # 用于button的QFont
+        self.button_font.setPointSize(BUTTON_FONT_SIZE)   # 设置按钮的字体大小
+
+        self.move_action_text = "当前模式: 剪切CUT (Ctrl+Shift+M)"
+        self.copy_action_text = "当前模式: 复制COPY (Ctrl+Shift+M)"
+        self.compare_action_text = "当前模式: 比较COMPARE (Ctrl+Shift+M)"
 
         self.set_center_layout()
         self.create_action()
@@ -100,10 +233,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def create_statusbar(self):
         """创建状态栏"""
-        label = QtWidgets.QLabel()
-        label.setOpenExternalLinks(True)
-        label.setText("<a style='font-size: 11px;' href='https://github.com/sola1121/drag_files_categorize'>Github</a>")
-        label.setFrameStyle(QtCore.Qt.PlainText)
+        label = MyInfoLabel()
         self.statusbar = QtWidgets.QStatusBar(self)
         self.statusbar.setStyleSheet(STATUSBAR_STYLESHEET)
         self.setStatusBar(self.statusbar)

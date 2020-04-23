@@ -9,6 +9,7 @@ COPY_ICON = "icons/copy.png"
 CUT_ICON = "icons/cut.png"
 REDUCE_ICON = "icons/reduce.png"
 DIRECTORY_ICON = "icons/directory.png"
+DIALOG_QUESTION_ICON = "icons/dialog-question.png"
 
 # ui_window config
 MAINWIN_WIDTH = 520
@@ -20,7 +21,6 @@ COPY_SIGN = 2
 CUT_SIGN = 1
 DEFAULT_SIGN = CUT_SIGN   # default move file mode
 SIGNS_LIST = [CUT_SIGN, COPY_SIGN, COMPARE_SIGN]   # mode switch order
-COPY_CUT_SWITCH_ACTION_STYLESHEET = ""
 
 # status bar
 STATUSBAR_STYLESHEET = "font-size: 10px;"
