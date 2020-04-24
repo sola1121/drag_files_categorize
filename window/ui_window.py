@@ -2,8 +2,8 @@ import sys
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-from exceptions import *
-from ui_config import *
+from common.exceptions import *
+from window.ui_config import *
 
 
 class DownLabel(QtWidgets.QLabel):
@@ -44,26 +44,36 @@ class FileHandleDialog(QtWidgets.QDialog):
         button_ignore : 跳过按钮
         button_cancel : 取消按钮
     """
+    COVER_SIGN = 1
+    IGNORE_SIGN = 2
+    CANCEL_SIGN = 3
+
     def __init__(self, parent=None, flags=QtCore.Qt.WindowFlags()):
         super().__init__(parent=parent, flags=flags)
         self.setWindowTitle("文件冲突")
+        self.setWindowModality(QtCore.Qt.WindowModal)
+        self.setModal(True)
 
-        self.create_buttons()
-        self.create_label()
         self.create_linedit()
+        self.create_label()
+        self.create_buttons()
         self.set_layout()
 
         self.name_path = None   # 原始的文件名
+        self.new_name_path = None   # 新的文件名
 
     def create_buttons(self):
         """创建按钮"""
-        self.button_cover  = QtWidgets.QPushButton("覆盖", parent=self)
+        self.button_cover = QtWidgets.QPushButton("覆盖", parent=self)
         self.button_cover.setToolTip("Cover")
         self.button_ignore = QtWidgets.QPushButton("跳过(&S)", parent=self)
+        self.button_ignore.setToolTip("Skip")
         self.button_cancel = QtWidgets.QPushButton("取消", parent=self)
         self.button_cancel.setToolTip("Cancel")
         self.button_cancel.setDefault(True)
-        self.button_cancel.clicked.connect(self.to_close)
+        self.button_cover.clicked.connect(self.to_cover)
+        self.button_ignore.clicked.connect(self.to_ignore)
+        self.button_cancel.clicked.connect(self.to_cancle)
 
     def create_label(self):
         """操作重命名标签"""
@@ -84,7 +94,7 @@ class FileHandleDialog(QtWidgets.QDialog):
         validator_regex.setRegExp(name_regx)
         self.linedit_rename.setValidator(validator_regex)
         self.linedit_rename.setMaxLength(255)
-        self.linedit_rename.textChanged.connect(self.linedit_rename_changed)
+        self.linedit_rename.textChanged.connect(self.linedit_change)
 
     def set_layout(self):
         """进行窗口布局"""
@@ -115,7 +125,7 @@ class FileHandleDialog(QtWidgets.QDialog):
         self.name_path = value
         self.linedit_rename.setText(value)
 
-    def linedit_rename_changed(self, value):
+    def linedit_change(self, value):
         """重命名编辑框文本改变事件"""
         if len(value) == 0:
             self.button_cover.setEnabled(False)
@@ -127,9 +137,28 @@ class FileHandleDialog(QtWidgets.QDialog):
         else:
             self.button_cover.setText("重命名")
             self.button_cover.setToolTip("Rename")
+    
+    def to_cover(self):
+        """覆盖按钮槽函数"""
+        if self.linedit_rename.text() in self.name_black_list:
+            QtWidgets.QMessageBox.information(self, 
+                "重命名错误", 
+                "当前名称%s为非法名称, 请修改." % self.linedit_rename.text()
+            )
+            self.linedit_rename.setText(self.name_path)
+            self.linedit_change(self.name_path)
+        else:
+            self.new_name_path = self.linedit_rename.text()
+            self.done(FileHandleDialog.COVER_SIGN)
 
-    def to_close(self):
-        return self.close()
+    def to_ignore(self):
+        """跳过按钮槽函数"""
+        self.done(FileHandleDialog.IGNORE_SIGN)
+
+    def to_cancle(self):
+        """取消按钮槽函数"""
+        # self.setResult(self.CANCEL_SIGN)
+        self.done(FileHandleDialog.CANCEL_SIGN)
 
 
 class MyInfoLabel(QtWidgets.QLabel):
@@ -157,7 +186,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.button_font = QtGui.QFont()         # 用于button的QFont
         self.button_font.setPointSize(BUTTON_FONT_SIZE)   # 设置按钮的字体大小
 
-        self.move_action_text = "当前模式: 剪切CUT (Ctrl+Shift+M)"
+        self.move_action_text = "当前模式: 移动MOVE (Ctrl+Shift+M)"
         self.copy_action_text = "当前模式: 复制COPY (Ctrl+Shift+M)"
         self.compare_action_text = "当前模式: 比较COMPARE (Ctrl+Shift+M)"
 
@@ -189,8 +218,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.area_add_action.setShortcut("Ctrl+Shift+A")
         # 切换复制或剪切模式的动作
         self.mode_switch_action = QtWidgets.QAction(parent=self)
-        if DEFAULT_SIGN == CUT_SIGN:
-            icon_file = CUT_ICON 
+        if DEFAULT_SIGN == MOVE_SIGN:
+            icon_file = MOVE_ICON 
             move_copy_text = self.move_action_text
         elif DEFAULT_SIGN == COPY_SIGN:
             icon_file = COPY_ICON
@@ -199,7 +228,8 @@ class MainWindow(QtWidgets.QMainWindow):
             icon_file = COMPARE_ICON
             move_copy_text = self.compare_action_text
         else:
-            raise UiConfigError("ui windows config mode switch action error, give DEFAULT_SIGN %s"%DEFAULT_SIGN)
+            raise ModeSwitchError("%s mode switch action config error, ui config DEFAULT_SIGN is %s"\
+                                 % (self.mode_switch_action, DEFAULT_SIGN))
         self.mode_switch_action.setData(DEFAULT_SIGN)
         self.mode_switch_action.setIcon(QtGui.QIcon(icon_file))
         self.mode_switch_action.setText(move_copy_text)

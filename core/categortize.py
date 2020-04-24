@@ -5,9 +5,12 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon, QFont
 from PyQt5.QtWidgets import QHBoxLayout, QLabel, QPushButton, QFileDialog, QMessageBox, QDesktopWidget
 
-from exceptions import *
-from ui_config import *
-from ui_window import FileHandleDialog, MainWindow
+from common.exceptions import *
+from common.auxiliary_functions import *
+from window.ui_config import *
+from window.ui_window import FileHandleDialog, MainWindow
+from window import OPEN_FILE_DIRECTORY
+from core.move_copy import make_handle_dialog, MoveCopyThread
 
 
 ### 控件类, 窗口类 ###
@@ -38,11 +41,11 @@ class LabelAcceptDrop(QLabel):
             if not os.path.exists(self.text()):
                 return None
             disk_info = shutil.disk_usage(path=self.text())   # 单位B
-            disk_info_format = "根 {root} , 总容量: {total}GB 使用: {used}GB 空闲: {free}GB 使用率: {used_rate}%".format(
+            disk_info_format = "根 {root} , 总容量: {total} 使用: {used} 空闲: {free} 使用率: {used_rate}%".format(
                    root = (os.path.splitdrive(self.text())[0]) if (os.path.splitdrive(self.text())[0]) else "/",
-                   total = round(disk_info.total/1024**3, 2), 
-                   used = round(disk_info.used/1024**3, 2), 
-                   free = round(disk_info.free/1024**3, 2), 
+                   total = get_format_file_size(disk_info.total), 
+                   used = get_format_file_size(disk_info.used), 
+                   free = get_format_file_size(disk_info.free),  
                    used_rate = round(disk_info.used/disk_info.total*100, 2))
             statusbar.showMessage(disk_info_format)
         except Exception as ex:
@@ -62,6 +65,7 @@ class LabelAcceptDrop(QLabel):
 
     def dragLeaveEvent(self, event):
         """重载离开事件"""
+        event.accept()
         self.setStyleSheet(LABEL_LEAVE_STYLESHEET)
 
     # TODO: 主要功能开发, 使用shutil, filecmp, os开始对文件进行操作
@@ -75,6 +79,8 @@ class LabelAcceptDrop(QLabel):
             for url in event.mimeData().urls():
                 src_path = url.toLocalFile()
                 print("\n拖入目录:", src_path)
+                if self.text() == LABEL_PLACEHOLDER:   # 没有设置目录的情况忽略
+                    continue
                 if src_path == self.text():   # 拖入目录是自身的情况忽略
                     continue
                 if not os.path.exists(self.text()):
@@ -82,10 +88,11 @@ class LabelAcceptDrop(QLabel):
                         os.makedirs(self.text())
                     except Exception as ex:
                         QMessageBox.critical(main_win, "拖入目录出错", "未发现定位目录, 尝试创建也出错.")
+                        return 1
                 # 主要功能, 进行文件的处理
                 mode_sign_data = main_win.mode_switch_action.data()
                 # TODO: 
-                if mode_sign_data == CUT_SIGN:   # 剪切文件
+                if mode_sign_data == MOVE_SIGN:   # 剪切文件
                     reback = move_copy_prepare(main_win, src_path, self.text())
                     print(src_path, "-返回值%s-M->"%reback, self.text())
                 elif  mode_sign_data == COPY_SIGN:   # 复制文件
@@ -109,8 +116,9 @@ class RunMainWin(MainWindow):
     """调用主窗口"""
     def __init__(self, parent=None):
         super().__init__(parent=parent)
-        self.the_id = 0                    # 自增键
+        self.id_count = 0                  # 自增键
         self.drop_groups = OrderedDict()   # 用于拖拽的对象储存
+        self.worker_count = 0   # 当前运行的工作数
 
         self.area_add_action.triggered.connect(lambda : self.add_drop_area(adjust_size=True))
         self.mode_switch_action.triggered.connect(lambda : self.switch_mode(self.mode_switch_action.data()))
@@ -127,9 +135,12 @@ class RunMainWin(MainWindow):
         # 判断窗口大小
         is_out_desktop = within_range_desktop(self.height()+DROP_AREA_HEIGHT, DROP_AREA_HEIGHT)
         if is_out_desktop >= 0:
-            back_info = QMessageBox.warning(self, "窗口过大提醒", "继续增加拖拽区域将超出桌面范围, 是否继续.", 
-                                                buttons=QMessageBox.Yes | QMessageBox.No)
-            if back_info == QMessageBox.No:
+            back_warn = QMessageBox.warning(self, 
+                "窗口过大提醒", "继续增加拖拽区域将超出桌面范围, 是否继续.", 
+                buttons=QMessageBox.No | QMessageBox.Ok,
+                defaultButton=QMessageBox.No
+            )
+            if back_warn == QMessageBox.No:
                 return None
         # 拖拽区域, 使用label
         new_drop_label = LabelAcceptDrop(LABEL_PLACEHOLDER, parent=self)
@@ -155,11 +166,11 @@ class RunMainWin(MainWindow):
         hbox_layout.addWidget(remove_area_button)   
         self.form_layout.addRow(new_drop_label, hbox_layout)
         # 配置到drop_group中, 创建更方便的访问
-        new_drop_label.the_id = self.the_id
-        dir_drop_button.the_id = self.the_id
-        remove_area_button.the_id = self.the_id
-        self.drop_groups[self.the_id] = [new_drop_label, dir_drop_button, remove_area_button]
-        self.the_id += 1
+        new_drop_label.the_id = self.id_count
+        dir_drop_button.the_id = self.id_count
+        remove_area_button.the_id = self.id_count
+        self.drop_groups[self.id_count] = [new_drop_label, dir_drop_button, remove_area_button]
+        self.id_count += 1
         # 调整大小
         if adjust_size:
             # 可自适应高度, 内置widget的建议高 + DROP_AREA_HEIGHT(单个拖拽区域高) + 工具栏高 + 状态栏高
@@ -173,9 +184,9 @@ class RunMainWin(MainWindow):
         signs_cycle = [next(cycle_iter) for _ in range(len(SIGNS_LIST)+1)]
         index = SIGNS_LIST.index(sign)
         new_sign = signs_cycle[index+1]
-        if new_sign == CUT_SIGN:
-            self.mode_switch_action.setData(CUT_SIGN)
-            self.mode_switch_action.setIcon(QIcon(CUT_ICON))
+        if new_sign == MOVE_SIGN:
+            self.mode_switch_action.setData(MOVE_SIGN)
+            self.mode_switch_action.setIcon(QIcon(MOVE_ICON))
             self.mode_switch_action.setText(self.move_action_text)
             self.setWindowTitle(MAIN_WIN_TITLE + "   [mode: move]")
         elif new_sign == COPY_SIGN:
@@ -196,7 +207,11 @@ class RunMainWin(MainWindow):
         """定义拖拽区域的定位目录
             item_label: 接受拖拽的Label控件
         """
-        directory = QFileDialog.getExistingDirectory(parent=self, caption="指定目录", directory=os.path.dirname(__file__))
+        if item_label.text() != LABEL_PLACEHOLDER:
+            root_path = item_label.text()
+        else:
+            root_path = OPEN_FILE_DIRECTORY
+        directory = QFileDialog.getExistingDirectory(parent=self, caption="指定目录", directory=root_path)
         if directory:
             item_label.setText(directory)
             item_label.setToolTip(directory)
@@ -214,7 +229,7 @@ class RunMainWin(MainWindow):
         """通过文件寻找载入json配置文件"""
         directory, file_type = QFileDialog.getOpenFileName(parent=self, 
             caption="载入Json配置", 
-            directory=os.path.dirname(__file__),
+            directory=OPEN_FILE_DIRECTORY,
             filter="json config file(*.json)"
         )
         if directory and file_type:
@@ -263,56 +278,22 @@ class RunMainWin(MainWindow):
             with open(new_file_dir, 'w', encoding="utf-8") as file:
                 json.dump(output_json, file, ensure_ascii=False)
 
-
-### 配合功能 ###
-### REVIEW 用来配合类或者主控功能的函数, 主要是一些检测性或判断的函数
-
-def within_range_desktop(height: int, threshold: int) -> int:
-    """判断高度是否在允许阈值内, 超出窗口返回1, 未超出返回-1, 差球不多返回0
-        height: 被判断的高度
-        threshold: 阈值
-    """
-    screen_geometry_height = QDesktopWidget().screenGeometry().height()
-    if height + threshold > screen_geometry_height:
-        return 1
-    elif height + threshold < screen_geometry_height:
-        return -1
-    else:
-        return 0
-
-
-def mark_paths(paths_list: list) -> dict:
-    """将有问题的路径归类为一个有序字典
-        paths_list: 记录有路径字符串的列表
-    """
-    marked_paths_dit = dict()
-    marked_paths_dit["exist"] = list()   # 存在且格式正确的路径字符串
-    marked_paths_dit["not_exist"] = list()   # 字符串代表的路径不存在
-    for path in paths_list:
-        if os.path.exists(path):
-            marked_paths_dit["exist"].append(path)
+    def closeEvent(self, event):
+        """重载关闭事件"""
+        if self.worker_count < 1:
+            event.accept()
         else:
-            marked_paths_dit["not_exist"].append(path)
-    return marked_paths_dit
-
-
-def get_format_file_size(path: str) -> str:
-    """返回文件大小, 含单位
-        path : 文件路径
-    """
-    if not os.path.exists(path):
-        return "error"
-    size = os.path.getsize(path)   # 单位B(字节)
-    units = ["KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"]   # 以1000为间隔单位
-    for i in range(0, len(units)):
-        decision_num = size / 1000**i
-        if (i == 0) and decision_num<1:
-            return str(round(size, 2)) + "B"
-        if decision_num<1:
-            return str(round(size/1000**(i-1), 2)) + units[i-1]
-    else:
-        return str(round(size/1000**i, 2)) + units[i]
-
+            back_warn = QMessageBox.warning(self, 
+                "任务执行中警告", 
+                f"当前有 {self.worker_count} 个任务正在运行, 关闭可能导致数据丢失, 是否继续?",
+                buttons=QMessageBox.No | QMessageBox.Ok,
+                defaultButton=QMessageBox.No
+            )
+            if back_warn == QMessageBox.Ok:
+                event.accept()
+            else:
+                event.ignore()
+            
 
 ### 主控功能 ###
 ### REVIEW 文件操作的主功能
@@ -320,50 +301,28 @@ def get_format_file_size(path: str) -> str:
 IGNORE_SIGN = 100
 ACCEPT_SIGN = 200
 
-
-def move_copy_prepare(widget, src_path, dst_path):
-    """预先准备, 主要要询问对重名文件的处理方式"""
+def move_copy_prepare(widget, src_path, dst_path) -> dict:
+    """预先准备, 单次询问对重名文件的处理方式
+        src_path : 原目录或文件路径
+        dst_path: 目标目录
+        返回一个字典 {sign: 信号类型, rename: 如果是重命名信号, 有这个 }
+    """
     if os.path.samefile(src_path, dst_path):
-        return IGNORE_SIGN
-    name_path = os.path.split(src_path)[1]   # 被移动或复制的目录或文件名
-    new_dst_path = os.path.join(dst_path, name_path)   # 移动或复制新的路径
-    if os.path.exists(new_dst_path):   #　判断是否已经在目标路径存在
-        # 判断移动的是啥
-        if os.path.isfile(src_path):
-            type_describle = "文件"
-        elif os.path.isdir(src_path): 
-            type_describle = "文件夹"
-        else:
-            type_describle = "未知"
-        # 初始化文件冲突对话框, 并进行必要的设置
-        head_info_format = "<h3>合并{type_describle}\"{name_path}\"吗?</h3><br>\
-                             <h4>在\"{dst_name_path}\"存在同名内容时, 将会被<span stle='color: red;'>覆盖</span>!</h4>".format(
-                                 type_describle = type_describle,
-                                 name_path = name_path,
-                                 dst_name_path = os.path.split(dst_path)[1]
-                            )
-        dst_info_format = "<b>原{type_describle}</b><br>大小: {size}<br>上次修改: {datetime}".format(
-                            type_describle = type_describle,
-                            size = get_format_file_size(new_dst_path),
-                            datetime = time.strftime("%Y.%m.%d %H:%M:%S", time.localtime(os.path.getmtime(new_dst_path)))
-        )
-        src_info_format = "<b>替换为</b><br>大小: {size}<br>上次修改: {datetime}".format(
-                           size = get_format_file_size(src_path),
-                           datetime = time.strftime("%Y.%m.%d %H:%M:%S", time.localtime(os.path.getmtime(src_path)))
-        )
-        file_handle_dialog = FileHandleDialog(parent=widget)
-        label_header = QLabel(head_info_format, parent=file_handle_dialog)
-        label_header.setTextInteractionFlags(Qt.TextSelectableByMouse|Qt.TextSelectableByKeyboard)
-        label_dst_info = QLabel(dst_info_format, parent=file_handle_dialog)
-        label_src_info = QLabel(src_info_format, parent=file_handle_dialog)
-        file_handle_dialog.grid_layout.addWidget(label_header, 0, 1)
-        file_handle_dialog.grid_layout.addWidget(label_dst_info, 1, 1)
-        file_handle_dialog.grid_layout.addWidget(label_src_info, 2, 1)
-        file_handle_dialog.set_name_path(name_path)
-        sign_back = file_handle_dialog.exec()
-        print("按键返回值:", sign_back)
+        return {}
+    file_handle_dialog = make_handle_dialog(widget, src_path, dst_path)
+    sign_back = file_handle_dialog.exec()
+    if sign_back == FileHandleDialog.COVER_SIGN:
+        #TODO: 执行重命名或覆盖操作
+        pass
+    elif sign_back == FileHandleDialog.IGNORE_SIGN:
+        #TODO: 忽略操作, 跳过这个文件, 接着下一个, 如果有的话
+        pass
+    elif sign_back == FileHandleDialog.CANCEL_SIGN:
+        #TODO: 取消操作, 取消之后的所有文件操作
+        pass
     else:
-        return ACCEPT_SIGN
+        raise FileHandleDialogError("%s unknown sign %s" % (file_handle_dialog, sign_back))
+    print("按键返回值:", sign_back, "测试name_path是否还有:", file_handle_dialog.name_path)
 
 
 async def compare_mode_func(widget, origin_path, direct_path):
