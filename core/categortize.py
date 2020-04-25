@@ -1,16 +1,16 @@
-import os, shutil, filecmp, json, itertools, asyncio, time
+import os, shutil, filecmp, json, itertools, asyncio
 from collections import OrderedDict
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon, QFont
-from PyQt5.QtWidgets import QHBoxLayout, QLabel, QPushButton, QFileDialog, QMessageBox, QDesktopWidget
+from PyQt5.QtWidgets import QHBoxLayout, QLabel, QPushButton, QFileDialog, QMessageBox
 
 from common.exceptions import *
 from common.auxiliary_functions import *
 from window.ui_config import *
 from window.ui_window import FileHandleDialog, MainWindow
 from window import OPEN_FILE_DIRECTORY
-from core.move_copy import make_handle_dialog, MoveCopyThread
+from core.move_copy import make_handle_dialog, move_copy_prepare, MoveCopyThread
 
 
 ### 控件类, 窗口类 ###
@@ -34,12 +34,15 @@ class LabelAcceptDrop(QLabel):
     def mousePressEvent(self, event):
         """重载点击事件, 显示磁盘容量"""
         try:
-            statusbar = self.nativeParentWidget().statusBar()
-            statusbar.clearMessage()
+            main_win = self.nativeParentWidget()
+            if main_win.worker_count > 0:
+                return None
             if str(self.text()) == LABEL_PLACEHOLDER:
                 return None
             if not os.path.exists(self.text()):
                 return None
+            statusbar = main_win.statusBar()
+            statusbar.clearMessage()
             disk_info = shutil.disk_usage(path=self.text())   # 单位B
             disk_info_format = "根 {root} , 总容量: {total} 使用: {used} 空闲: {free} 使用率: {used_rate}%".format(
                    root = (os.path.splitdrive(self.text())[0]) if (os.path.splitdrive(self.text())[0]) else "/",
@@ -76,37 +79,86 @@ class LabelAcceptDrop(QLabel):
         main_win = self.nativeParentWidget()
         if event.mimeData().hasUrls():
             # 遍历输出拖动进来的所有文件路径
-            for url in event.mimeData().urls():
-                src_path = url.toLocalFile()
+            for file_url in event.mimeData().urls():
+                src_path = file_url.toLocalFile()
+                dst_path = self.text()
                 print("\n拖入目录:", src_path)
-                if self.text() == LABEL_PLACEHOLDER:   # 没有设置目录的情况忽略
+                if dst_path == LABEL_PLACEHOLDER:   # 没有设置目录的情况忽略
                     continue
-                if src_path == self.text():   # 拖入目录是自身的情况忽略
+                if src_path == dst_path:   # 拖入目录是自身的情况忽略
                     continue
-                if not os.path.exists(self.text()):
+                if not os.path.exists(dst_path):
                     try:
-                        os.makedirs(self.text())
+                        os.makedirs(dst_path)
                     except Exception as ex:
                         QMessageBox.critical(main_win, "拖入目录出错", "未发现定位目录, 尝试创建也出错.")
                         return 1
-                # 主要功能, 进行文件的处理
-                mode_sign_data = main_win.mode_switch_action.data()
-                # TODO: 
-                if mode_sign_data == MOVE_SIGN:   # 剪切文件
-                    reback = move_copy_prepare(main_win, src_path, self.text())
-                    print(src_path, "-返回值%s-M->"%reback, self.text())
-                elif  mode_sign_data == COPY_SIGN:   # 复制文件
-                    print(src_path, "-C->", self.text())
-                elif mode_sign_data == COMPARE_SIGN:   # 对比文件
-                    new_coro = compare_mode_func(main_win, src_path, self.text())
-                    coro_list.append(new_coro)
-                else:
-                    QMessageBox.critical(main_win, "模式错误", f"未检测到合法模式设置. {mode_sign_data}")
-            if coro_list:
-                future_result = async_event_loop.run_until_complete(asyncio.gather(*(coro_list)))
-                print("Future对象:", future_result)
-                if mode_sign_data == COMPARE_SIGN:   # 展示对比信息
-                    show_compare_message(main_win, self.text(), future_result)
+                try:
+                    # 主要功能, 进行文件的处理
+                    src_name = os.path.split(src_path)[1]   # 原目录或文件名
+                    mode_sign_data = main_win.mode_switch_action.data()
+                    # TODO: 
+                    if mode_sign_data == MOVE_SIGN:   # 剪切文件
+                        if os.access(src_path, os.W_OK) and os.access(dst_path, os.W_OK):   # 检查权限
+                            print(src_path, "-MOVE->" , dst_path)
+                            if src_name in os.listdir[dst_path]:   # 如果目录或文件已经在目标目录存在
+                                handle_reback = move_copy_prepare(main_win, src_path, dst_path)   # 调用询问窗口
+                                if handle_reback.sign == FileHandleDialog.COVER_SIGN:   # 覆盖
+                                    worker = MoveCopyThread(main_win, src_path, dst_path, MOVE_SIGN, callback=lambda: print("完成了一个处理重复的move."))
+                                    worker.start()
+                                elif handle_reback.sign == FileHandleDialog.IGNORE_SIGN:   # 忽略当前
+                                    continue
+                                elif handle_reback.sign == FileHandleDialog.CANCEL_SIGN:   # 取消所有
+                                    break
+                            else:
+                                worker = MoveCopyThread(main_win, src_path, dst_path, MOVE_SIGN, callback=lambda: print("完成了一个move 工作."))
+                                worker.start()
+                        else:
+                            no_permission_info = "没有处理权限."
+                            if not os.access(src_path, os.W_OK):
+                                no_permission_info += "\n" + str(src_path)
+                            if not os.access(dst_path, os.W_OK):
+                                no_permission_info += "\n" + str(dst_path)
+                            QMessageBox.information(main_win, "权限提醒", no_permission_info)
+                            continue
+                    elif  mode_sign_data == COPY_SIGN:   # 复制文件
+                        if os.access(src_path, os.R_OK) and os.access(dst_path, os.W_OK):   # 检察权限
+                            print(src_path, "-COPY->", dst_path)
+                            if src_name in os.listdir(dst_path):   # 如果目录或文件已经在目标目录存在 
+                                handle_reback = move_copy_prepare(main_win, src_path, dst_path)   # 调用询问窗口
+                                if handle_reback.sign == FileHandleDialog.COVER_SIGN:   # 覆盖
+                                    worker = MoveCopyThread(main_win, src_path, dst_path, COPY_SIGN, callback=lambda: print("完成了一个处理重复的copy."))
+                                    worker.start()
+                                elif handle_reback.sign == FileHandleDialog.IGNORE_SIGN:   # 忽略当前
+                                    continue
+                                elif handle_reback.sign == FileHandleDialog.CANCEL_SIGN:   # 取消所有
+                                    break
+                            else:
+                                worker = MoveCopyThread(main_win, src_path, dst_path, COPY_SIGN, callable=lambda: print("完成了一个copy 工作."))
+                                worker.start()
+                        else:
+                            no_permission_info = "没有处理权限."
+                            if not os.access(src_path, os.R_OK):
+                                no_permission_info += "\n" + str(src_path)
+                            if not os.access(dst_path, os.W_OK):
+                                no_permission_info += "\n" + str(dst_path)
+                            QMessageBox.information(main_win, "权限提醒", no_permission_info)
+                            continue
+                    elif mode_sign_data == COMPARE_SIGN:   # 对比文件
+                        new_coro = compare_mode_func(main_win, src_path, dst_path)
+                        coro_list.append(new_coro)
+                    else:
+                        QMessageBox.critical(main_win, "模式错误", f"未检测到合法模式设置. {mode_sign_data}")
+                
+                    # 如果有协程任务, 启动, 用于文件对比
+                    if coro_list:
+                        future_result = async_event_loop.run_until_complete(asyncio.gather(*(coro_list)))
+                        print("Future对象:", future_result)
+                        if mode_sign_data == COMPARE_SIGN:   # 展示对比信息
+                            show_compare_message(main_win, dst_path, future_result)
+                except Exception as ex:
+                    QMessageBox.critical(main_win, "工作线程创建错误", str(ex))
+            event.accept()
         else:
             event.ignore()
         self.setStyleSheet(LABEL_INIT_STYLESHEET)
@@ -126,6 +178,9 @@ class RunMainWin(MainWindow):
         self.config_output_aciton.triggered.connect(self.down_json_config)
 
         self.load_json_config(DIRECTORIES_CONFIG, disable_auto_load=False, adjust_size=False)
+    
+    def reduce_worker_count(self):
+        self.worker_count -= 1
 
     def add_drop_area(self, label_dir=None, adjust_size=False):
         """添加可拖拽区域
@@ -300,29 +355,6 @@ class RunMainWin(MainWindow):
 
 IGNORE_SIGN = 100
 ACCEPT_SIGN = 200
-
-def move_copy_prepare(widget, src_path, dst_path) -> dict:
-    """预先准备, 单次询问对重名文件的处理方式
-        src_path : 原目录或文件路径
-        dst_path: 目标目录
-        返回一个字典 {sign: 信号类型, rename: 如果是重命名信号, 有这个 }
-    """
-    if os.path.samefile(src_path, dst_path):
-        return {}
-    file_handle_dialog = make_handle_dialog(widget, src_path, dst_path)
-    sign_back = file_handle_dialog.exec()
-    if sign_back == FileHandleDialog.COVER_SIGN:
-        #TODO: 执行重命名或覆盖操作
-        pass
-    elif sign_back == FileHandleDialog.IGNORE_SIGN:
-        #TODO: 忽略操作, 跳过这个文件, 接着下一个, 如果有的话
-        pass
-    elif sign_back == FileHandleDialog.CANCEL_SIGN:
-        #TODO: 取消操作, 取消之后的所有文件操作
-        pass
-    else:
-        raise FileHandleDialogError("%s unknown sign %s" % (file_handle_dialog, sign_back))
-    print("按键返回值:", sign_back, "测试name_path是否还有:", file_handle_dialog.name_path)
 
 
 async def compare_mode_func(widget, origin_path, direct_path):

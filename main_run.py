@@ -23,7 +23,7 @@ for module in (depend_modules.keys()):
             if depend_modules[module] == THIRD_MODULE:
                 print("Third part module can't found. lack module '%s', can use pip to install." % module)
             else:
-                print("Software damaged missing '%s'." % module)
+                print("Software damaged, missing '%s'." % module)
             sys.exit(1)
 
 from PyQt5.QtWidgets import QApplication

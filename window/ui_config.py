@@ -15,7 +15,7 @@ DIALOG_QUESTION_ICON = "window/icons/dialog-question.png"
 MAINWIN_WIDTH = 520
 MAINWIN_HEIGHT = 60
 
-# action
+# action, may don't do any thing about these is the best
 COMPARE_SIGN = 3
 COPY_SIGN = 2
 MOVE_SIGN = 1
@@ -37,7 +37,7 @@ DROP_AREA_REMOVE_BUTTON_STYLESHEET = ""
 LABEL_PLACEHOLDER = "-----"
 LABEL_FONT_SIZE = 9   # can be covered by LABEL_INIT_STYLESHEET with font-size css style
 LABEL_INIT_STYLESHEET = "font-size: 12px; border: 1px solid black;"
-LABEL_ENTER_STYLESHEET = "font-size: 10px; border: 2px solid rgb(117, 117, 117); background-color: rgb(175, 175, 175);"
+LABEL_ENTER_STYLESHEET = "font-size: 10px; border: 2px solid rgb(115, 115, 115); background-color: rgb(185, 185, 185);"
 LABEL_LEAVE_STYLESHEET = LABEL_INIT_STYLESHEET
 
 # default load directory json config

@@ -3,9 +3,6 @@ import os
 from PyQt5.QtWidgets import QDesktopWidget
 
 
-### 配合功能 ###
-### REVIEW 用来配合类或者主控功能的函数, 主要是一些检测性或判断的函数
-
 def within_range_desktop(height: int, threshold: int) -> int:
     """判断高度是否在允许阈值内, 超出窗口返回1, 未超出返回-1, 差球不多返回0
         height: 被判断的高度
@@ -35,18 +32,11 @@ def mark_paths(paths_list: list) -> dict:
     return marked_paths_dit
 
 
-def get_format_file_size(path_or_size) -> str:
+def get_format_file_size(size) -> str:
     """返回文件大小, 含单位
         path_or_size : 文件路径, 或大小值
     """
-    # 判断是给的文件路径还是大小值
-    if isinstance(path_or_size, str):
-        path = path_or_size
-        if not os.path.exists(path):
-            return "error"
-        size = float(os.path.getsize(path))   # 单位B(字节)
-    elif isinstance(path_or_size, (int, float)):
-        size = float(path_or_size)
+    size = float(size)
     # 开始计算, 以1000为间隔单位, 精度2
     K = 1000; pec = 2
     units = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"]

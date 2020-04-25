@@ -37,7 +37,7 @@ class DownLabel(QtWidgets.QLabel):
 class FileHandleDialog(QtWidgets.QDialog):
     """文件冲突处理框
     内置接口
-        name_path : 原始的目录或文件名
+        origin_name : 原始的目录或文件名
         linedit_rename : 重命名单行编辑框
         grid_layout : 信息的主显示
         button_cover : 覆盖或重命名按钮
@@ -59,8 +59,8 @@ class FileHandleDialog(QtWidgets.QDialog):
         self.create_buttons()
         self.set_layout()
 
-        self.name_path = None   # 原始的文件名
-        self.new_name_path = None   # 新的文件名
+        self.origin_name = None   # 原始的文件名
+        self.new_name = None   # 新的文件名
 
     def create_buttons(self):
         """创建按钮"""
@@ -81,7 +81,7 @@ class FileHandleDialog(QtWidgets.QDialog):
 
     def create_linedit(self):
         if sys.platform == "win32":
-            name_regx = QtCore.QRegExp(r"^[^\/\?\*:\|\\<>]+$")    # 不能有 / ?  * : | \  <  >
+            name_regx = QtCore.QRegExp(r"^[^\.][^\/\?\*:\|\\<>]+$")    # 开头不能 . 里面不能有 / ?  * : | \  <  >
             self.name_black_list = ["con","aux","nul","prn","com0","com1","com2","com3","com4",
                                     "com5","com6","com7", "com8","com9","lpt0","lpt1","lpt2",
                                     "lpt3", "lpt4","lpt5","lpt6","lpt7","lpt8","lpt9"]
@@ -120,9 +120,9 @@ class FileHandleDialog(QtWidgets.QDialog):
 
         self.setLayout(self.vbox_layout)
 
-    def set_name_path(self, value):
+    def set_origin_name(self, value):
         """设置重命名单行编辑框文本"""
-        self.name_path = value
+        self.origin_name = value
         self.linedit_rename.setText(value)
 
     def linedit_change(self, value):
@@ -131,7 +131,7 @@ class FileHandleDialog(QtWidgets.QDialog):
             self.button_cover.setEnabled(False)
         else:
             self.button_cover.setEnabled(True)
-        if value == self.name_path:
+        if value == self.origin_name:
             self.button_cover.setText("覆盖")
             self.button_cover.setToolTip("Cover")
         else:
@@ -143,12 +143,12 @@ class FileHandleDialog(QtWidgets.QDialog):
         if self.linedit_rename.text() in self.name_black_list:
             QtWidgets.QMessageBox.information(self, 
                 "重命名错误", 
-                "当前名称%s为非法名称, 请修改." % self.linedit_rename.text()
+                "当前名称 %s 为非法名称, 请修改." % self.linedit_rename.text()
             )
-            self.linedit_rename.setText(self.name_path)
-            self.linedit_change(self.name_path)
+            self.linedit_rename.setText(self.origin_name)
+            self.linedit_change(self.origin_name)
         else:
-            self.new_name_path = self.linedit_rename.text()
+            self.new_name = self.linedit_rename.text()
             self.done(FileHandleDialog.COVER_SIGN)
 
     def to_ignore(self):
@@ -160,6 +160,11 @@ class FileHandleDialog(QtWidgets.QDialog):
         # self.setResult(self.CANCEL_SIGN)
         self.done(FileHandleDialog.CANCEL_SIGN)
 
+    def closeEvent(self, event):
+        """重载关闭事件"""
+        self.setResult(FileHandleDialog.CANCEL_SIGN)
+        event.accept()
+
 
 class MyInfoLabel(QtWidgets.QLabel):
     """相关信息标签"""
@@ -167,7 +172,7 @@ class MyInfoLabel(QtWidgets.QLabel):
         super().__init__(parent)
         self.setOpenExternalLinks(True)
         self.setText("<span style='font-size: 10px;'><a href='https://github.com/sola1121/drag_files_categorize'>Github</a> GPL v3<span>")
-        self.setToolTip("开发者: sola1121, 该项目主页: https://github.com/sola1121/drag_files_categorize")
+        self.setToolTip("Developer: sola1121, Main Page: https://github.com/sola1121/drag_files_categorize")
 
 
 class MainWindow(QtWidgets.QMainWindow):
