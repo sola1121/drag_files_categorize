@@ -99,9 +99,7 @@ class LabelAcceptDrop(QLabel):
                             if os.path.split(src_path)[1] in os.listdir(dst_path):   # 如果目录或文件已经在目标目录存在
                                 handle_reback = move_copy_prepare(main_win, src_path, dst_path)   # 调用询问窗口
                                 if handle_reback.sign == FileHandleDialog.COVER_SIGN:   # 覆盖
-                                    if handle_reback.rename:
-                                        dst_path = os.path.join(handle_reback.rename)
-                                    worker = MoveCopyThread(src_path, dst_path, MOVE_SIGN, self)
+                                    worker = MoveCopyThread(src_path, dst_path, MOVE_SIGN, rename=handle_reback.rename, parent=self)
                                     worker.started.connect(self.thread_worker_start)
                                     worker.finish_signal.connect(self.thread_worker_finish)
                                     worker.start()
@@ -110,7 +108,7 @@ class LabelAcceptDrop(QLabel):
                                 elif handle_reback.sign == FileHandleDialog.CANCEL_SIGN:   # 取消所有
                                     break
                             else:
-                                worker = MoveCopyThread(src_path, dst_path, MOVE_SIGN, self)
+                                worker = MoveCopyThread(src_path, dst_path, MOVE_SIGN, parent=self)
                                 worker.started.connect(self.thread_worker_start)
                                 worker.finish_signal.connect(self.thread_worker_finish)
                                 worker.start()
@@ -127,9 +125,7 @@ class LabelAcceptDrop(QLabel):
                             if os.path.split(src_path)[1] in os.listdir(dst_path):   # 如果目录或文件已经在目标目录存在 
                                 handle_reback = move_copy_prepare(main_win, src_path, dst_path)   # 调用询问窗口
                                 if handle_reback.sign == FileHandleDialog.COVER_SIGN:   # 覆盖
-                                    if handle_reback.rename:
-                                        dst_path = os.path.join(handle_reback.rename)
-                                    worker = MoveCopyThread(src_path, dst_path, COPY_SIGN, self)
+                                    worker = MoveCopyThread(src_path, dst_path, COPY_SIGN, rename=handle_reback.rename, parent=self)
                                     worker.started.connect(self.thread_worker_start)
                                     worker.finish_signal.connect(self.thread_worker_finish)
                                     worker.start()
@@ -138,7 +134,7 @@ class LabelAcceptDrop(QLabel):
                                 elif handle_reback.sign == FileHandleDialog.CANCEL_SIGN:   # 取消所有
                                     break
                             else:
-                                worker = MoveCopyThread(src_path, dst_path, COPY_SIGN, self)
+                                worker = MoveCopyThread(src_path, dst_path, COPY_SIGN, parent=self)
                                 worker.started.connect(self.thread_worker_start)
                                 worker.finish_signal.connect(self.thread_worker_finish)
                                 worker.start()

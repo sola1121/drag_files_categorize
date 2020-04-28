@@ -105,7 +105,7 @@ class MoveCopyThread(QThread):
     """
     finish_signal = pyqtSignal(dict)   # 返回dict
 
-    def __init__(self, src_path, dst_path, mode, parent=None):
+    def __init__(self, src_path, dst_path, mode, rename=None, parent=None):
         super().__init__(parent=parent)
         self.src_path = src_path
         self.dst_path = dst_path
@@ -113,18 +113,25 @@ class MoveCopyThread(QThread):
             raise ModeSwitchError("%s mode sign error, given %s" %(self, mode))
         else:
             self.mode = mode
+        self.rename = rename
 
     def run(self):
         info_back = {"status": True, "error": None}   # 默认完成
         if self.mode == MOVE_SIGN:   # 移动
             try:
                 if os.path.isfile(self.src_path):
-                    shutil.move(self.src_path, self.dst_path, copy_function=shutil.copy2)
+                    if self.rename:
+                        shutil.move(self.src_path, os.path.join(self.dst_path, self.rename), copy_function=shutil.copy2)
+                    else:
+                        shutil.move(self.src_path, self.dst_path, copy_function=shutil.copy2)
                     if LOGGING:
                         logging.info("move file complete, path \"%s\" -> path \"%s\"" %(self.src_path, self.dst_path ))
                 else:
-                    move2(self.src_path, self.dst_path)
-                    shutil.rmtree(self.src_path)
+                    if self.rename:
+                        shutil.move(self.src_path, os.path.join(self.dst_path, self.rename), copy_function=shutil.copy2)
+                    else:
+                        move2(self.src_path, self.dst_path)
+                        shutil.rmtree(self.src_path)
                     if LOGGING:
                         logging.info("move directory complete, path \"%s\" -> path \"%s\"" %(self.src_path, self.dst_path ))
             except Exception as ex:
@@ -133,11 +140,17 @@ class MoveCopyThread(QThread):
         else:   # 复制
             try:
                 if os.path.isfile(self.src_path):
-                    shutil.copy2(self.src_path, self.dst_path)
+                    if self.rename:
+                        shutil.copy2(self.src_path, os.path.join(self.dst_path, self.rename))
+                    else:
+                        shutil.copy2(self.src_path, self.dst_path)
                     if LOGGING:
                         logging.info("copy file complete, path \"%s\" -> \"%s\"" %(self.src_path, self.dst_path))
-                else: 
-                    copytree2(self.src_path, self.dst_path)
+                else:
+                    if self.rename:
+                        shutil.copytree(self.src_path, os.path.join(self.dst_path, self.rename), copy_function=shutil.copy2)
+                    else:
+                        copytree2(self.src_path, self.dst_path)
                     if LOGGING:
                         logging.info("copy directory complete, path \"%s\" -> \"%s\"" %(self.src_path, self.dst_path))
             except Exception as ex:
