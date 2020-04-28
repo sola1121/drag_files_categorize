@@ -54,13 +54,15 @@ class FileHandleDialog(QtWidgets.QDialog):
         self.setWindowModality(QtCore.Qt.WindowModal)
         self.setModal(True)
 
+        self.name_black_list = list()   # 保存名字黑名单, 包括同名与系统禁止的
+        self.origin_name = None   # 原始的文件名
+        self.new_name = None   # 新的文件名
+
         self.create_linedit()
         self.create_label()
         self.create_buttons()
         self.set_layout()
 
-        self.origin_name = None   # 原始的文件名
-        self.new_name = None   # 新的文件名
 
     def create_buttons(self):
         """创建按钮"""
@@ -82,12 +84,12 @@ class FileHandleDialog(QtWidgets.QDialog):
     def create_linedit(self):
         if sys.platform == "win32":
             name_regx = QtCore.QRegExp(r"^[^\.][^\/\?\*:\|\\<>]+$")    # 开头不能 . 里面不能有 / ?  * : | \  <  >
-            self.name_black_list = ["con","aux","nul","prn","com0","com1","com2","com3","com4",
-                                    "com5","com6","com7", "com8","com9","lpt0","lpt1","lpt2",
-                                    "lpt3", "lpt4","lpt5","lpt6","lpt7","lpt8","lpt9"]
+            self.name_black_list.extend(["con","aux","nul","prn","com0","com1","com2","com3","com4",
+                                         "com5","com6","com7", "com8","com9","lpt0","lpt1","lpt2",
+                                         "lpt3", "lpt4","lpt5","lpt6","lpt7","lpt8","lpt9"])
         else:
             name_regx = QtCore.QRegExp(r"^[^\.\/][^\/]+$")  # 开头不能 . /  里面不能有 /
-            self.name_black_list = []
+            self.name_black_list.extend([])
         self.linedit_rename = QtWidgets.QLineEdit()
         # 正则验证, 字母和数字
         validator_regex = QtGui.QRegExpValidator()
@@ -120,14 +122,19 @@ class FileHandleDialog(QtWidgets.QDialog):
 
         self.setLayout(self.vbox_layout)
 
-    def set_origin_name(self, value):
-        """设置重命名单行编辑框文本"""
+    def set_origin_name(self, value, black_list):
+        """设置重命名单行编辑框文本
+            value: 原文件名
+            blcak_list: 已存在与目标目录中的名字
+        """
         self.origin_name = value
+        self.name_black_list.extend(black_list)
+        self.name_black_list.remove(value)
         self.linedit_rename.setText(value)
 
     def linedit_change(self, value):
         """重命名编辑框文本改变事件"""
-        if len(value) == 0:
+        if len(value) <= 0:
             self.button_cover.setEnabled(False)
         else:
             self.button_cover.setEnabled(True)
@@ -143,7 +150,7 @@ class FileHandleDialog(QtWidgets.QDialog):
         if self.linedit_rename.text() in self.name_black_list:
             QtWidgets.QMessageBox.information(self, 
                 "重命名错误", 
-                "当前名称 %s 为非法名称, 请修改." % self.linedit_rename.text()
+                "当前名称 %s 已存在, 请修改." % self.linedit_rename.text()
             )
             self.linedit_rename.setText(self.origin_name)
             self.linedit_change(self.origin_name)
@@ -199,10 +206,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.create_action()
         self.create_toolbar()
         self.create_statusbar()
-
-    def mousePressEvent(self, event):
-        """重载单击事件, 清空statusbar内容"""
-        self.statusbar.clearMessage()
 
     def set_center_layout(self):
         """添加布局管理器"""

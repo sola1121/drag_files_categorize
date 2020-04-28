@@ -1,7 +1,7 @@
 import os, shutil, filecmp, json, itertools, asyncio
 from collections import OrderedDict
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QIcon, QFont
 from PyQt5.QtWidgets import QHBoxLayout, QLabel, QPushButton, QFileDialog, QMessageBox
 
@@ -35,11 +35,11 @@ class LabelAcceptDrop(QLabel):
         """重载点击事件, 显示磁盘容量"""
         try:
             main_win = self.nativeParentWidget()
-            if main_win.worker_count > 0:
+            if main_win.worker_count >= 1:   # 有任务的时候显示任务, 不显示磁盘信息
                 return None
-            if str(self.text()) == LABEL_PLACEHOLDER:
+            if str(self.text()) == LABEL_PLACEHOLDER:   # 不为目录而为占位符时
                 return None
-            if not os.path.exists(self.text()):
+            if not os.path.exists(self.text()):   # 目录不存在
                 return None
             statusbar = main_win.statusBar()
             statusbar.clearMessage()
@@ -71,7 +71,6 @@ class LabelAcceptDrop(QLabel):
         event.accept()
         self.setStyleSheet(LABEL_LEAVE_STYLESHEET)
 
-    # TODO: 主要功能开发, 使用shutil, filecmp, os开始对文件进行操作
     def dropEvent(self, event):
         """重载拖入释放事件, 主要功能事件"""
         coro_list = list()
@@ -82,7 +81,6 @@ class LabelAcceptDrop(QLabel):
             for file_url in event.mimeData().urls():
                 src_path = file_url.toLocalFile()
                 dst_path = self.text()
-                print("\n拖入目录:", src_path)
                 if dst_path == LABEL_PLACEHOLDER:   # 没有设置目录的情况忽略
                     continue
                 if src_path == dst_path:   # 拖入目录是自身的情况忽略
@@ -95,23 +93,26 @@ class LabelAcceptDrop(QLabel):
                         return 1
                 try:
                     # 主要功能, 进行文件的处理
-                    src_name = os.path.split(src_path)[1]   # 原目录或文件名
                     mode_sign_data = main_win.mode_switch_action.data()
-                    # TODO: 
                     if mode_sign_data == MOVE_SIGN:   # 剪切文件
                         if os.access(src_path, os.W_OK) and os.access(dst_path, os.W_OK):   # 检查权限
-                            print(src_path, "-MOVE->" , dst_path)
-                            if src_name in os.listdir[dst_path]:   # 如果目录或文件已经在目标目录存在
+                            if os.path.split(src_path)[1] in os.listdir(dst_path):   # 如果目录或文件已经在目标目录存在
                                 handle_reback = move_copy_prepare(main_win, src_path, dst_path)   # 调用询问窗口
                                 if handle_reback.sign == FileHandleDialog.COVER_SIGN:   # 覆盖
-                                    worker = MoveCopyThread(main_win, src_path, dst_path, MOVE_SIGN, callback=lambda: print("完成了一个处理重复的move."))
+                                    if handle_reback.rename:
+                                        dst_path = os.path.join(handle_reback.rename)
+                                    worker = MoveCopyThread(src_path, dst_path, MOVE_SIGN, self)
+                                    worker.started.connect(self.thread_worker_start)
+                                    worker.finish_signal.connect(self.thread_worker_finish)
                                     worker.start()
                                 elif handle_reback.sign == FileHandleDialog.IGNORE_SIGN:   # 忽略当前
                                     continue
                                 elif handle_reback.sign == FileHandleDialog.CANCEL_SIGN:   # 取消所有
                                     break
                             else:
-                                worker = MoveCopyThread(main_win, src_path, dst_path, MOVE_SIGN, callback=lambda: print("完成了一个move 工作."))
+                                worker = MoveCopyThread(src_path, dst_path, MOVE_SIGN, self)
+                                worker.started.connect(self.thread_worker_start)
+                                worker.finish_signal.connect(self.thread_worker_finish)
                                 worker.start()
                         else:
                             no_permission_info = "没有处理权限."
@@ -123,18 +124,23 @@ class LabelAcceptDrop(QLabel):
                             continue
                     elif  mode_sign_data == COPY_SIGN:   # 复制文件
                         if os.access(src_path, os.R_OK) and os.access(dst_path, os.W_OK):   # 检察权限
-                            print(src_path, "-COPY->", dst_path)
-                            if src_name in os.listdir(dst_path):   # 如果目录或文件已经在目标目录存在 
+                            if os.path.split(src_path)[1] in os.listdir(dst_path):   # 如果目录或文件已经在目标目录存在 
                                 handle_reback = move_copy_prepare(main_win, src_path, dst_path)   # 调用询问窗口
                                 if handle_reback.sign == FileHandleDialog.COVER_SIGN:   # 覆盖
-                                    worker = MoveCopyThread(main_win, src_path, dst_path, COPY_SIGN, callback=lambda: print("完成了一个处理重复的copy."))
+                                    if handle_reback.rename:
+                                        dst_path = os.path.join(handle_reback.rename)
+                                    worker = MoveCopyThread(src_path, dst_path, COPY_SIGN, self)
+                                    worker.started.connect(self.thread_worker_start)
+                                    worker.finish_signal.connect(self.thread_worker_finish)
                                     worker.start()
                                 elif handle_reback.sign == FileHandleDialog.IGNORE_SIGN:   # 忽略当前
                                     continue
                                 elif handle_reback.sign == FileHandleDialog.CANCEL_SIGN:   # 取消所有
                                     break
                             else:
-                                worker = MoveCopyThread(main_win, src_path, dst_path, COPY_SIGN, callable=lambda: print("完成了一个copy 工作."))
+                                worker = MoveCopyThread(src_path, dst_path, COPY_SIGN, self)
+                                worker.started.connect(self.thread_worker_start)
+                                worker.finish_signal.connect(self.thread_worker_finish)
                                 worker.start()
                         else:
                             no_permission_info = "没有处理权限."
@@ -153,15 +159,26 @@ class LabelAcceptDrop(QLabel):
                     # 如果有协程任务, 启动, 用于文件对比
                     if coro_list:
                         future_result = async_event_loop.run_until_complete(asyncio.gather(*(coro_list)))
-                        print("Future对象:", future_result)
-                        if mode_sign_data == COMPARE_SIGN:   # 展示对比信息
-                            show_compare_message(main_win, dst_path, future_result)
+                        # 展示对比信息, mode_sign_data == COMPARE_SIGN
+                        show_compare_message(main_win, dst_path, future_result)
                 except Exception as ex:
                     QMessageBox.critical(main_win, "工作线程创建错误", str(ex))
             event.accept()
         else:
             event.ignore()
         self.setStyleSheet(LABEL_INIT_STYLESHEET)
+
+    def thread_worker_start(self):
+        """线程启动"""
+        mian_win = self.nativeParentWidget()
+        mian_win.worker_count += 1
+
+    def thread_worker_finish(self, info):
+        """线程结束, info是由线程返回的namedtuple信息"""
+        main_win = self.nativeParentWidget()
+        if info["status"] is False:
+            QMessageBox.critical(main_win, "任务处理时发生错误", info["error"])
+        main_win.worker_count -= 1
 
 
 class RunMainWin(MainWindow):
@@ -171,16 +188,32 @@ class RunMainWin(MainWindow):
         self.id_count = 0                  # 自增键
         self.drop_groups = OrderedDict()   # 用于拖拽的对象储存
         self.worker_count = 0   # 当前运行的工作数
-
+        self.statusbar_islocked = False   # 是否为statusbar信息上锁而不让修改, False没有锁, 可以改
+        # 为活动按钮绑定事件
         self.area_add_action.triggered.connect(lambda : self.add_drop_area(adjust_size=True))
         self.mode_switch_action.triggered.connect(lambda : self.switch_mode(self.mode_switch_action.data()))
         self.config_input_aciton.triggered.connect(self.reload_json_config)
         self.config_output_aciton.triggered.connect(self.down_json_config)
-
+        # 载入设置
         self.load_json_config(DIRECTORIES_CONFIG, disable_auto_load=False, adjust_size=False)
+        # 创建计时器
+        self.create_timer()
     
-    def reduce_worker_count(self):
-        self.worker_count -= 1
+    def create_timer(self):
+        """创建一个计时器"""
+        timer = QTimer(parent=self)
+        timer.timeout.connect(self.monitor_worker_count)
+        timer.start(1000)
+
+    def monitor_worker_count(self):
+        """监视当前worker_count的工作计数, 更新锁定statusbbar"""
+        count = self.worker_count
+        if count >= 1:
+            self.statusbar_islocked = True   # 上锁, 不能更改statusbar信息
+            self.statusbar.showMessage("当前运行的任务数: {}".format(count))
+        if count < 1 and self.statusbar_islocked:
+            self.statusbar_islocked = False
+            self.statusbar.clearMessage()
 
     def add_drop_area(self, label_dir=None, adjust_size=False):
         """添加可拖拽区域
@@ -333,6 +366,16 @@ class RunMainWin(MainWindow):
             with open(new_file_dir, 'w', encoding="utf-8") as file:
                 json.dump(output_json, file, ensure_ascii=False)
 
+    def mousePressEvent(self, event):
+        """重载单击事件, 没有任务的时候, 可以不显示任务提示, 清空statusbar内容"""
+        if self.worker_count < 1:
+            self.statusbar.clearMessage()
+        event.accept()
+
+    def mouseDoubleClickEvent(self, event):
+        """重载双击事件, 和单击保持一样"""
+        self.mousePressEvent(event)
+
     def closeEvent(self, event):
         """重载关闭事件"""
         if self.worker_count < 1:
@@ -350,31 +393,33 @@ class RunMainWin(MainWindow):
                 event.ignore()
             
 
-### 主控功能 ###
-### REVIEW 文件操作的主功能
-
-IGNORE_SIGN = 100
-ACCEPT_SIGN = 200
-
+### 对比功能 ###
+### REVIEW 拖入的原路径是文件, 比较在目标目录中是否有该文件; 
+### 拖入的原路径是目录, 判断目标中是否存在, 然后对比这两个目录
 
 async def compare_mode_func(widget, origin_path, direct_path):
     """单次对比目录或文件是否存在
         widget: 主窗口控件
         origin_path: 原目录或原文件目录
         direct_path: 定位目录
-        返回{ 原路径: [[相同目录], [相同文件]] }
+        返回{ 原路径: [[相同目录], [相同文件], 目录是否在目标存在] }
     """
     direct_origin = os.path.join(direct_path, os.path.split(origin_path)[1])   # 在目标目录中的
     if os.path.isfile(origin_path):
-        return {origin_path: [[], [os.path.split(origin_path)[1]] if os.path.exists(direct_origin) else []]}
+        exist_in_direct = False
+        if os.path.exists(direct_origin):
+            exist_in_direct = True
+        return {origin_path: [[], [], exist_in_direct]}
     elif os.path.isdir(origin_path):
-        if os.path.exists(direct_origin):   # 在目标目录中是否存在
-            directory_compare = filecmp.dircmp(origin_path, direct_origin)
-            common_dirs = directory_compare.common_dirs
-            common_files = directory_compare.common_files
-            return {origin_path: [common_dirs, common_files]}
-        else:
-            return {origin_path: [[], []]}
+        directory_compare = filecmp.dircmp(origin_path, direct_path)
+        common_dirs = directory_compare.common_dirs
+        common_files = directory_compare.common_files
+        exist_in_direct = False
+        if os.path.exists(direct_origin):
+            exist_in_direct = True
+        return {origin_path: [common_dirs, common_files, exist_in_direct]}
+    else:
+        return {origin_path: [[], [], False]}
 
 
 def show_compare_message(widget, direct_path, infos_list):
@@ -389,13 +434,26 @@ def show_compare_message(widget, direct_path, infos_list):
             ]
     """
     infos_format = str()
-    info_format = "\n[×]Compare {origin} && {direct}\n -Common dirs:\n    {directories}\n -Common files:\n    {files}\n"
+    info_format = "\n[×]Compare DESTINATION: {direct} DRAGED: {origin}{has_same}{common_dirs}{common_files}\n"
     for info_dit in infos_list:
         origin_path = list(info_dit.keys())[0]
+        has_same_info = "\nHave nothing in common."
+        has_same = list(info_dit.values())[0][2]
+        if has_same:
+            has_same_info = "\n -Destination directory already has \"{}\"".format(os.path.split(origin_path)[1])
+        common_dirs_info = ""
+        common_dirs = list(info_dit.values())[0][0]
+        if common_dirs:
+            common_dirs_info = "\n -Common directories:\n    " + ", ".join(common_dirs)
+        common_files_info = ""
+        common_files = list(info_dit.values())[0][1]
+        if common_files:
+            commonn_files_info = "\n -Common files:\n    " + ", ".join(common_files)
         infos_format += info_format.format(
+            direct=direct_path, 
             origin=origin_path, 
-            direct=os.path.join(direct_path, os.path.split(origin_path)[1]), 
-            directories=", ".join(list(info_dit.values())[0][0]), 
-            files=", ".join(list(info_dit.values())[0][1])
+            has_same = has_same_info,
+            common_dirs=common_dirs_info,
+            common_files=common_files_info
         )
     QMessageBox.information(widget, "比较信息", infos_format)

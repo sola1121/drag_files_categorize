@@ -1,6 +1,7 @@
 # incon files
-MAIN_WIN_TITLE = "Drop Files Categortize"
-MAIN_ICON = "window/icons/android.ico"
+VERSION = "v1.0"
+MAIN_WIN_TITLE = "Drop Files Categortize " + VERSION
+MAIN_ICON = "window/icons/main.ico"
 SETTING_INPUT = "window/icons/setting-input.png"
 SETTING_OUTPUT = "window/icons/setting-output.png"
 PLUS_ICON = "window/icons/plus.png"
@@ -42,3 +43,6 @@ LABEL_LEAVE_STYLESHEET = LABEL_INIT_STYLESHEET
 
 # default load directory json config
 DIRECTORIES_CONFIG = "directories.json"
+
+# whether logging
+LOGGING = True
