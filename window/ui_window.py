@@ -4,6 +4,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from common.exceptions import *
 from window.ui_config import *
+from window import MAIN_WIN_TITLE
 
 
 class DownLabel(QtWidgets.QLabel):
@@ -245,13 +246,13 @@ class MainWindow(QtWidgets.QMainWindow):
         # 导入json配置的动作
         self.config_input_aciton = QtWidgets.QAction(
             QtGui.QIcon(SETTING_INPUT),
-            "导入配置好的分类目录",
+            "导入配置好的分类目录 Import Destination",
             parent=self
         )
         # 导出json配置的动作
         self.config_output_aciton = QtWidgets.QAction(
             QtGui.QIcon(SETTING_OUTPUT),
-            "导出配置好的分类目录",
+            "导出配置好的分类目录 Export Destinations",
             parent=self
         )
         self.linedit_config_path = QtWidgets.QLineEdit()

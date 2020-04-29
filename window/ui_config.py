@@ -1,6 +1,4 @@
 # incon files
-VERSION = "v1.0"
-MAIN_WIN_TITLE = "Drop Files Categortize " + VERSION
 MAIN_ICON = "window/icons/main.ico"
 SETTING_INPUT = "window/icons/setting-input.png"
 SETTING_OUTPUT = "window/icons/setting-output.png"

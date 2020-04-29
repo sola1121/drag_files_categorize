@@ -9,7 +9,7 @@ from common.exceptions import *
 from common.auxiliary_functions import *
 from window.ui_config import *
 from window.ui_window import FileHandleDialog, MainWindow
-from window import OPEN_FILE_DIRECTORY
+from window import OPEN_FILE_DIRECTORY, MAIN_WIN_TITLE
 from core.move_copy import make_handle_dialog, move_copy_prepare, MoveCopyThread
 
 

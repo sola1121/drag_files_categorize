@@ -1,7 +1,6 @@
 import os
 
-from window.ui_config import *
-from window.ui_window import FileHandleDialog, MainWindow 
-
+VERSION = "v1.0"
+MAIN_WIN_TITLE = "Drop Files Categortize " + VERSION
 
 OPEN_FILE_DIRECTORY = os.path.dirname(os.path.dirname(__file__))
