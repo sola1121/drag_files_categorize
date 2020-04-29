@@ -178,7 +178,7 @@ class MyInfoLabel(QtWidgets.QLabel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setOpenExternalLinks(True)
-        self.setText("<span style='font-size: 10px;'><a href='https://github.com/sola1121/drag_files_categorize'>Github</a> LGPL v3.0<span>")
+        self.setText("<span style='font-size: 10px;'><a href='https://github.com/sola1121/drag_files_categorize'>Github</a> GPL v3<span>")
         self.setToolTip("Developer: sola1121, Main Page: https://github.com/sola1121/drag_files_categorize")
 
 

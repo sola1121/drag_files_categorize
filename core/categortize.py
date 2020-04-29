@@ -357,7 +357,11 @@ class RunMainWin(MainWindow):
         for label in [group_list[0] for group_list in self.drop_groups.values()]:
             paths_list.append(label.text())
         output_json["paths_list"] = paths_list
-        new_file_dir, file_type = QFileDialog.getSaveFileName(self, caption="导出新的配置", filter="json config file(*.json)")
+        new_file_dir, file_type = QFileDialog.getSaveFileName(parent=self, 
+            caption="导出新的配置", 
+            directory=OPEN_FILE_DIRECTORY, 
+            filter="json config file(*.json)"
+        )
         if new_file_dir and file_type:
             with open(new_file_dir, 'w', encoding="utf-8") as file:
                 json.dump(output_json, file, ensure_ascii=False)

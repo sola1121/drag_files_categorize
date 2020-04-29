@@ -119,14 +119,17 @@ class MoveCopyThread(QThread):
         info_back = {"status": True, "error": None}   # 默认完成
         if self.mode == MOVE_SIGN:   # 移动
             try:
-                if os.path.isfile(self.src_path):
+                if os.path.isfile(self.src_path):   # 对文件
                     if self.rename:
                         shutil.move(self.src_path, os.path.join(self.dst_path, self.rename), copy_function=shutil.copy2)
                     else:
-                        shutil.move(self.src_path, self.dst_path, copy_function=shutil.copy2)
+                        new_dst_path = os.path.join(self.dst_path, os.path.split(self.src_path)[1])
+                        shutil.move(self.src_path, new_dst_path, copy_function=shutil.copy2)
+                        # shutil.copy2(self.src_path, self.new_dst_path)   # NOTE: 备份解决方案
+                        # os.remove(self.src_path)
                     if LOGGING:
                         logging.info("move file complete, path \"%s\" -> path \"%s\"" %(self.src_path, self.dst_path ))
-                else:
+                else:   # 对目录
                     if self.rename:
                         shutil.move(self.src_path, os.path.join(self.dst_path, self.rename), copy_function=shutil.copy2)
                     else:
@@ -139,14 +142,14 @@ class MoveCopyThread(QThread):
                 info_back["error"] = f"{self.src_path} 移动到 {self.dst_path} 发生错误!\n{ex}"
         else:   # 复制
             try:
-                if os.path.isfile(self.src_path):
+                if os.path.isfile(self.src_path):   # 对文件
                     if self.rename:
                         shutil.copy2(self.src_path, os.path.join(self.dst_path, self.rename))
                     else:
                         shutil.copy2(self.src_path, self.dst_path)
                     if LOGGING:
                         logging.info("copy file complete, path \"%s\" -> \"%s\"" %(self.src_path, self.dst_path))
-                else:
+                else:   # 对目录
                     if self.rename:
                         shutil.copytree(self.src_path, os.path.join(self.dst_path, self.rename), copy_function=shutil.copy2)
                     else:
