@@ -176,7 +176,7 @@ def move2(src_path, dst_path):
         elif os.path.isfile(src_path_name):   # 如果是文件
             shutil.move(src_path_name, os.path.join(new_dst_path, name))
 
-    shutil.copystat(src_path, dst_path)
+    shutil.copystat(src_path, new_dst_path)   # 不必要, 因为已经将文件信息复制了
 
 
 def copytree2(src_path, dst_path):
@@ -196,4 +196,4 @@ def copytree2(src_path, dst_path):
         elif os.path.isfile(src_path_name):   # 如果是文件
             shutil.copy2(src_path_name, os.path.join(new_dst_path, name))
 
-    shutil.copystat(src_path, dst_path)
+    shutil.copystat(src_path, new_dst_path)   # 不必要, 因为已经将文件信息复制了

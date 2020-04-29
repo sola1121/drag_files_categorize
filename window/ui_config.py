@@ -46,3 +46,21 @@ DIRECTORIES_CONFIG = "directories.json"
 
 # whether logging
 LOGGING = True
+
+# default config file
+CONFIG_FILE = "config.json"
+
+
+# 允许外部通过json文件定义的一些
+import os, json
+
+
+if CONFIG_FILE and os.path.exists(os.path.join(os.path.dirname(__file__), CONFIG_FILE)):
+    try:
+        with open(os.path.join(os.path.dirname(__file__), CONFIG_FILE), 'r') as file:
+            configs_dit = json.load(file)
+            DIRECTORIES_CONFIG = configs_dit["defaultDirectoriesConfig"]
+            if configs_dit["historyLog"] in (True, False):
+                LOGGING = configs_dit["historyLog"]
+    except:
+        pass
