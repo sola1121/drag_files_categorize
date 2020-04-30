@@ -32,6 +32,7 @@ from core.categortize import RunMainWin
 
 
 class Main():
+    """主包运行"""
     def __init__(self, argv):
         self.app = QApplication(argv)
         self.win = RunMainWin()
