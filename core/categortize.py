@@ -334,7 +334,7 @@ class RunMainWin(MainWindow):
         self.linedit_config_path.setToolTip(f"当前使用的配置: {directory}")
         if not os.path.isfile(directory):
             return None
-        with open(directory, 'r') as file:
+        with open(directory, 'rb') as file:
             try:
                 content_dit = json.load(file)
                 if content_dit["auto_load"] or disable_auto_load:  # 判断是否进行预读取, 对于一些情况需要禁用auto_load
@@ -355,7 +355,8 @@ class RunMainWin(MainWindow):
         paths_list = list()
         output_json["auto_load"] = False
         for label in [group_list[0] for group_list in self.drop_groups.values()]:
-            paths_list.append(label.text())
+            if os.path.isdir(label.text()):
+                paths_list.append(label.text())
         output_json["paths_list"] = paths_list
         new_file_dir, file_type = QFileDialog.getSaveFileName(parent=self, 
             caption="导出新的配置", 
