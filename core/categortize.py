@@ -165,7 +165,7 @@ class LabelAcceptDrop(QLabel):
 
     def thread_worker_start(self):
         """线程启动"""
-        self.mian_win.worker_count += 1
+        self.main_win.worker_count += 1
 
     def thread_worker_finish(self, info):
         """线程结束, info是由线程返回的namedtuple信息"""
