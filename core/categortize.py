@@ -29,19 +29,19 @@ class LabelAcceptDrop(QLabel):
         self.setFont(label_font)
         self.setStyleSheet(LABEL_INIT_STYLESHEET)
 
+        self.main_win = self.nativeParentWidget()   # 父窗口
         self.the_id = None
 
     def mousePressEvent(self, event):
         """重载点击事件, 显示磁盘容量"""
         try:
-            main_win = self.nativeParentWidget()
-            if main_win.worker_count >= 1:   # 有任务的时候显示任务, 不显示磁盘信息
+            if self.main_win.worker_count >= 1:   # 有任务的时候显示任务, 不显示磁盘信息
                 return None
             if str(self.text()) == LABEL_PLACEHOLDER:   # 不为目录而为占位符时
                 return None
             if not os.path.exists(self.text()):   # 目录不存在
                 return None
-            statusbar = main_win.statusBar()
+            statusbar = self.main_win.statusBar()
             statusbar.clearMessage()
             disk_info = shutil.disk_usage(path=self.text())   # 单位B
             disk_info_format = "根 {root} , 总容量: {total} 使用: {used} 空闲: {free} 使用率: {used_rate}%".format(
@@ -57,34 +57,24 @@ class LabelAcceptDrop(QLabel):
     def mouseDoubleClickEvent(self, event):
         """重载双击事件, 显示磁盘容量"""
         self.mousePressEvent(event)
-    
+
     def dragEnterEvent(self, event):
         """重载进入事件"""
         if event.mimeData().hasUrls():
             self.setStyleSheet(LABEL_ENTER_STYLESHEET)
-            main_win = self.nativeParentWidget()
-            mode_sign_data = main_win.mode_switch_action.data()
-            if mode_sign_data == MOVE_SIGN:
-                self.setCursor(Qt.DragMoveCursor)
-            elif mode_sign_data == COPY_SIGN:
-                self.setCursor(Qt.DragCopyCursor)
-            else:
-                self.setCursor(Qt.ClosedHandCursor)
             event.accept()
         else:
             event.ignore()
 
     def dragLeaveEvent(self, event):
         """重载离开事件"""
-        event.accept()
         self.setStyleSheet(LABEL_LEAVE_STYLESHEET)
-        self.unsetCursor()
+        event.accept()
 
     def dropEvent(self, event):
         """重载拖入释放事件, 主要功能事件"""
         coro_list = list()
         async_event_loop = asyncio.get_event_loop()
-        main_win = self.nativeParentWidget()
         if event.mimeData().hasUrls():
             # 遍历输出拖动进来的所有文件路径
             for file_url in event.mimeData().urls():
@@ -98,15 +88,15 @@ class LabelAcceptDrop(QLabel):
                     try:
                         os.makedirs(dst_path)
                     except Exception as ex:
-                        QMessageBox.critical(main_win, "拖入目录出错", "未发现定位目录, 尝试创建也出错.")
-                        return 1
+                        QMessageBox.critical(self.main_win, "拖入目录出错", "未发现定位目录, 尝试创建也出错.")
+                        return None
                 try:
                     # 主要功能, 进行文件的处理
-                    mode_sign_data = main_win.mode_switch_action.data()
+                    mode_sign_data = self.main_win.mode_switch_action.data()
                     if mode_sign_data == MOVE_SIGN:   # 剪切文件
                         if os.access(src_path, os.W_OK) and os.access(dst_path, os.W_OK):   # 检查权限
                             if os.path.split(src_path)[1] in os.listdir(dst_path):   # 如果目录或文件已经在目标目录存在
-                                handle_reback = move_copy_prepare(main_win, src_path, dst_path)   # 调用询问窗口
+                                handle_reback = move_copy_prepare(self.main_win, src_path, dst_path)   # 调用询问窗口
                                 if handle_reback.sign == FileHandleDialog.COVER_SIGN:   # 覆盖
                                     worker = MoveCopyThread(src_path, dst_path, MOVE_SIGN, rename=handle_reback.rename, parent=self)
                                     worker.started.connect(self.thread_worker_start)
@@ -127,12 +117,12 @@ class LabelAcceptDrop(QLabel):
                                 no_permission_info += "\n" + str(src_path)
                             if not os.access(dst_path, os.W_OK):
                                 no_permission_info += "\n" + str(dst_path)
-                            QMessageBox.information(main_win, "权限提醒", no_permission_info)
+                            QMessageBox.information(self.main_win, "权限提醒", no_permission_info)
                             continue
                     elif  mode_sign_data == COPY_SIGN:   # 复制文件
                         if os.access(src_path, os.R_OK) and os.access(dst_path, os.W_OK):   # 检察权限
                             if os.path.split(src_path)[1] in os.listdir(dst_path):   # 如果目录或文件已经在目标目录存在 
-                                handle_reback = move_copy_prepare(main_win, src_path, dst_path)   # 调用询问窗口
+                                handle_reback = move_copy_prepare(self.main_win, src_path, dst_path)   # 调用询问窗口
                                 if handle_reback.sign == FileHandleDialog.COVER_SIGN:   # 覆盖
                                     worker = MoveCopyThread(src_path, dst_path, COPY_SIGN, rename=handle_reback.rename, parent=self)
                                     worker.started.connect(self.thread_worker_start)
@@ -153,21 +143,21 @@ class LabelAcceptDrop(QLabel):
                                 no_permission_info += "\n" + str(src_path)
                             if not os.access(dst_path, os.W_OK):
                                 no_permission_info += "\n" + str(dst_path)
-                            QMessageBox.information(main_win, "权限提醒", no_permission_info)
+                            QMessageBox.information(self.main_win, "权限提醒", no_permission_info)
                             continue
                     elif mode_sign_data == COMPARE_SIGN:   # 对比文件
-                        new_coro = compare_mode_func(main_win, src_path, dst_path)
+                        new_coro = compare_mode_func(self.main_win, src_path, dst_path)
                         coro_list.append(new_coro)
                     else:
-                        QMessageBox.critical(main_win, "模式错误", f"未检测到合法模式设置. {mode_sign_data}")
+                        QMessageBox.critical(self.main_win, "模式错误", f"未检测到合法模式设置. {mode_sign_data}")
                 
                     # 如果有协程任务, 启动, 用于文件对比
                     if coro_list:
                         future_result = async_event_loop.run_until_complete(asyncio.gather(*(coro_list)))
                         # 展示对比信息, mode_sign_data == COMPARE_SIGN
-                        show_compare_message(main_win, dst_path, future_result)
+                        show_compare_message(self.main_win, dst_path, future_result)
                 except Exception as ex:
-                    QMessageBox.critical(main_win, "工作线程创建错误", str(ex))
+                    QMessageBox.critical(self.main_win, "工作线程创建错误", str(ex))
             event.accept()
         else:
             event.ignore()
@@ -175,15 +165,13 @@ class LabelAcceptDrop(QLabel):
 
     def thread_worker_start(self):
         """线程启动"""
-        mian_win = self.nativeParentWidget()
-        mian_win.worker_count += 1
+        self.mian_win.worker_count += 1
 
     def thread_worker_finish(self, info):
         """线程结束, info是由线程返回的namedtuple信息"""
-        main_win = self.nativeParentWidget()
         if info["status"] is False:
-            QMessageBox.critical(main_win, "任务处理时发生错误", info["error"])
-        main_win.worker_count -= 1
+            QMessageBox.critical(self.main_win, "任务处理时发生错误", info["error"])
+        self.main_win.worker_count -= 1
 
 
 class RunMainWin(MainWindow):
@@ -194,7 +182,7 @@ class RunMainWin(MainWindow):
         self.drop_groups = OrderedDict()   # 用于拖拽的对象储存
         self.worker_count = 0   # 当前运行的工作数
         self.statusbar_islocked = False   # 是否为statusbar信息上锁而不让修改, False没有锁, 可以改
-        self.open_directory = copy.deepcopy(OPEN_JSON_DIRECTORY)    # 新增拖拽区域设置时打开的目录
+        self.open_directory = copy.deepcopy(OPEN_JSON_DIRECTORY)    # 拖拽区域设置时打开的目录
         # 为活动按钮绑定事件
         self.area_add_action.triggered.connect(lambda : self.add_drop_area(adjust_size=True))
         self.mode_switch_action.triggered.connect(lambda : self.switch_mode(self.mode_switch_action.data()))
@@ -303,13 +291,17 @@ class RunMainWin(MainWindow):
         """
         if item_label.text() != LABEL_PLACEHOLDER:
             root_path = item_label.text()
-        else:
+        elif os.path.exists(self.open_directory):
             root_path = self.open_directory
+        else:
+            root_path = OPEN_JSON_DIRECTORY
         directory = QFileDialog.getExistingDirectory(parent=self, caption="指定目录", directory=root_path)
         if directory:
             item_label.setText(directory)
             item_label.setToolTip(directory)
             self.open_directory = directory   # 记录打开目录
+            self.linedit_config_path.clear()   # 清空配置文件显示
+            self.linedit_config_path.setToolTip("载入的目录配置文件")
 
     def remove_drop_area(self, item_label):
         """移除可拖拽区域
@@ -341,8 +333,6 @@ class RunMainWin(MainWindow):
             disable_auto_load: 是否禁用json配置中的auto_load
             adjust_size: 是否在添加可拖拽区域时, 同时调整MainWindow的高度
         """
-        self.linedit_config_path.setText(str(directory))
-        self.linedit_config_path.setToolTip(f"当前使用的配置: {directory}")
         if not os.path.isfile(directory):
             return None
         with open(directory, 'rb') as file:
@@ -359,6 +349,8 @@ class RunMainWin(MainWindow):
                             QMessageBox.information(self, "目录解析提醒", info_format)           
             except Exception as ex:
                 QMessageBox.critical(self, "Json 载入错误", f"不能解析所给定的json文件: {directory}\n{ex}")
+        self.linedit_config_path.setText(str(directory))
+        self.linedit_config_path.setToolTip(f"当前使用的配置: {directory}")
 
     def down_json_config(self):
         """导出json配置文件"""

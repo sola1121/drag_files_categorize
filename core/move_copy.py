@@ -32,21 +32,21 @@ def make_handle_dialog(widget, src_path, dst_path) -> FileHandleDialog:
         src_stat_info = os.stat(src_path)
         src2dst_stat_info = os.stat(src2dst_path)
         head_info_format = "<h3>合并{type_describle}\"{src_name}\"吗?</h3><br>\
-                            <h4>在\"{dst_name_path}\"存在同名内容时, 将会被<span style='color: red;'>覆盖</span>!</h4>".format(
-                                type_describle = type_describle,
-                                src_name = src_name,
-                                dst_name_path = os.path.split(dst_path)[1]
+                            <h4>在\"{dst_name_path}\"存在同名内容时, 将会被<span style='color: red;'>覆盖</span>! </h4>".format(
+                            type_describle = type_describle,
+                            src_name = src_name,
+                            dst_name_path = os.path.split(dst_path)[1]
         )
         dst_info_format = "<b>原{type_describle}</b><br>项目: {number}, 大小: {size}<br>上次修改: {datetime}".format(
-                            type_describle = type_describle,
-                            number = src2dst_stat_info.st_nlink,
-                            size = get_format_file_size(src2dst_stat_info.st_size),
-                            datetime = time.strftime("%Y.%m.%d %H:%M:%S", time.localtime(os.path.getmtime(src2dst_path)))
+                           type_describle = type_describle,
+                           number = src2dst_stat_info.st_nlink,
+                           size = get_format_file_size(src2dst_stat_info.st_size),
+                           datetime = time.strftime("%Y.%m.%d %H:%M:%S", time.localtime(os.path.getmtime(src2dst_path)))
         )
         src_info_format = "<b>替换为</b><br>项目: {number}, 大小: {size}<br>上次修改: {datetime}".format(
-                            number = src_stat_info.st_nlink,
-                            size = get_format_file_size(src_stat_info.st_size),
-                            datetime = time.strftime("%Y.%m.%d %H:%M:%S", time.localtime(os.path.getmtime(src_path)))
+                           number = src_stat_info.st_nlink,
+                           size = get_format_file_size(src_stat_info.st_size),
+                           datetime = time.strftime("%Y.%m.%d %H:%M:%S", time.localtime(os.path.getmtime(src_path)))
         )
         # 初始化文件冲突对话框, 并进行必要的设置
         file_handle_dialog = FileHandleDialog(parent=widget)
