@@ -1,4 +1,4 @@
-import os, shutil, filecmp, json, itertools, asyncio
+import os, shutil, filecmp, json, itertools, asyncio, copy
 from collections import OrderedDict
 
 from PyQt5.QtCore import Qt, QTimer
@@ -9,7 +9,7 @@ from common.exceptions import *
 from common.auxiliary_functions import *
 from window.ui_config import *
 from window.ui_window import FileHandleDialog, MainWindow
-from window import OPEN_FILE_DIRECTORY, MAIN_WIN_TITLE
+from window import OPEN_JSON_DIRECTORY, MAIN_WIN_TITLE
 from core.move_copy import make_handle_dialog, move_copy_prepare, MoveCopyThread
 
 
@@ -61,8 +61,16 @@ class LabelAcceptDrop(QLabel):
     def dragEnterEvent(self, event):
         """重载进入事件"""
         if event.mimeData().hasUrls():
-            event.accept()
             self.setStyleSheet(LABEL_ENTER_STYLESHEET)
+            main_win = self.nativeParentWidget()
+            mode_sign_data = main_win.mode_switch_action.data()
+            if mode_sign_data == MOVE_SIGN:
+                self.setCursor(Qt.DragMoveCursor)
+            elif mode_sign_data == COPY_SIGN:
+                self.setCursor(Qt.DragCopyCursor)
+            else:
+                self.setCursor(Qt.ClosedHandCursor)
+            event.accept()
         else:
             event.ignore()
 
@@ -70,6 +78,7 @@ class LabelAcceptDrop(QLabel):
         """重载离开事件"""
         event.accept()
         self.setStyleSheet(LABEL_LEAVE_STYLESHEET)
+        self.unsetCursor()
 
     def dropEvent(self, event):
         """重载拖入释放事件, 主要功能事件"""
@@ -185,6 +194,7 @@ class RunMainWin(MainWindow):
         self.drop_groups = OrderedDict()   # 用于拖拽的对象储存
         self.worker_count = 0   # 当前运行的工作数
         self.statusbar_islocked = False   # 是否为statusbar信息上锁而不让修改, False没有锁, 可以改
+        self.open_directory = copy.deepcopy(OPEN_JSON_DIRECTORY)    # 新增拖拽区域设置时打开的目录
         # 为活动按钮绑定事件
         self.area_add_action.triggered.connect(lambda : self.add_drop_area(adjust_size=True))
         self.mode_switch_action.triggered.connect(lambda : self.switch_mode(self.mode_switch_action.data()))
@@ -294,11 +304,12 @@ class RunMainWin(MainWindow):
         if item_label.text() != LABEL_PLACEHOLDER:
             root_path = item_label.text()
         else:
-            root_path = OPEN_FILE_DIRECTORY
+            root_path = self.open_directory
         directory = QFileDialog.getExistingDirectory(parent=self, caption="指定目录", directory=root_path)
         if directory:
             item_label.setText(directory)
             item_label.setToolTip(directory)
+            self.open_directory = directory   # 记录打开目录
 
     def remove_drop_area(self, item_label):
         """移除可拖拽区域
@@ -313,7 +324,7 @@ class RunMainWin(MainWindow):
         """通过文件寻找载入json配置文件"""
         directory, file_type = QFileDialog.getOpenFileName(parent=self, 
             caption="载入Json配置", 
-            directory=OPEN_FILE_DIRECTORY,
+            directory=OPEN_JSON_DIRECTORY,
             filter="json config file(*.json)"
         )
         if directory and file_type:
@@ -360,7 +371,7 @@ class RunMainWin(MainWindow):
         output_json["paths_list"] = paths_list
         new_file_dir, file_type = QFileDialog.getSaveFileName(parent=self, 
             caption="导出新的配置", 
-            directory=OPEN_FILE_DIRECTORY, 
+            directory=OPEN_JSON_DIRECTORY, 
             filter="json config file(*.json)"
         )
         if new_file_dir and file_type:

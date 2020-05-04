@@ -2,11 +2,11 @@ import os, logging
 
 from PyQt5.QtWidgets import QDesktopWidget
 
-from window import OPEN_FILE_DIRECTORY
+from window import OPEN_LOG_DIRECTORY
 
 
 logging.basicConfig(
-    filename=os.path.join(OPEN_FILE_DIRECTORY, "history.log"), 
+    filename=os.path.join(OPEN_LOG_DIRECTORY, "history.log"), 
     filemode='a+',
     format="%(asctime)s %(levelname)s >>> %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
