@@ -50,15 +50,17 @@ CONFIG_FILE = "config.json"
 
 
 # 允许外部通过json文件定义的一些
-import os, json
+import os, sys, json
 
 
-if CONFIG_FILE and os.path.exists(os.path.join(os.path.dirname(__file__), CONFIG_FILE)):
+config_file_path = os.path.join(os.path.dirname(sys.argv[0]), "window")
+config_file_path = os.path.join(config_file_path, CONFIG_FILE)
+if CONFIG_FILE and os.path.exists(config_file_path):
     try:
-        with open(os.path.join(os.path.dirname(__file__), CONFIG_FILE), 'r') as file:
+        with open(config_file_path, 'rb') as file:
             configs_dit = json.load(file)
             DIRECTORIES_CONFIG = configs_dit["defaultDirectoriesConfig"]
             if configs_dit["historyLog"] in (True, False):
                 LOGGING = configs_dit["historyLog"]
-    except:
+    except Exception as ex:
         pass
