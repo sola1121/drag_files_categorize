@@ -8,7 +8,7 @@ Sort files to directories by drag and drop, save the mess desktop.
 
 ## 依赖 requirements
 
-python >= 3.6, pyqt >= 5.10
+python >= 3.6, pyqt == 5.10
 
 Running on Windows/Linux/macOS
 
